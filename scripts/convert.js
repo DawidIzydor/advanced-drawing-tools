@@ -1,6 +1,6 @@
 import { MODULE_NAME } from "./const.js";
 
-Drawing.prototype._convertToPolygon = async function ({ confirm = false } = {}) {
+(() => foundry.canvas?.placeables?.Drawing)().prototype._convertToPolygon = async function ({ confirm = false } = {}) {
     if (this.document.shape.type === "p") {
         return;
     }
@@ -85,7 +85,11 @@ Drawing.prototype._convertToPolygon = async function ({ confirm = false } = {}) 
         }
 
         this.document.shape.type = "p";
-        update = this._rescaleDimensions(update, 0, 0);
+        
+       
+        update = (() => foundry.canvas?.placeables?.Drawing)().rescaleDimensions(update, 0, 0);
+        
+        
         update.shape.type = "p";
 
         if (this.document.fillType === CONST.DRAWING_FILL_TYPES.NONE) {

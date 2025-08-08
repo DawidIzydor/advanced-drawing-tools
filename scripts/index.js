@@ -11,47 +11,41 @@ import "./shape.js";
 import "./text.js";
 
 Hooks.once("libWrapper.Ready", () => {
-    if (!foundry.utils.isNewerVersion(game.version, 12)) {
-        libWrapper.register(MODULE_ID, "DrawingsLayer.prototype.gridPrecision", function () {
-            // Force snapping to grid vertices
-            if (this._forceSnap) return canvas.grid.type <= CONST.GRID_TYPES.SQUARE ? 2 : 5;
+    libWrapper.register(MODULE_ID, "foundry.canvas.layers.DrawingsLayer.prototype.gridPrecision", function () {
+        // Force snapping to grid vertices
+        if (this._forceSnap) return canvas.grid.type <= CONST.GRID_TYPES.SQUARE ? 2 : 5;
 
-            // Normal snapping precision
-            let size = canvas.dimensions.size;
-            if (size >= 128) return 16;
-            else if (size >= 64) return 8;
-            else if (size >= 32) return 4;
-            return 1;
-        }, libWrapper.OVERRIDE);
-        libWrapper.ignore_conflicts(MODULE_ID, "precise-drawing-tools", "DrawingsLayer.prototype.gridPrecision");
-    }
+        // Normal snapping precision
+        let size = canvas.dimensions.size;
+        if (size >= 128) return 16;
+        else if (size >= 64) return 8;
+        else if (size >= 32) return 4;
+        return 1;
+    }, libWrapper.OVERRIDE);
+    libWrapper.ignore_conflicts(MODULE_ID, "precise-drawing-tools", "DrawingsLayer.prototype.gridPrecision");
 
-    if (!foundry.utils.isNewerVersion(game.version, 11)) {
-        libWrapper.register(MODULE_ID, "Drawing.prototype._rescaleDimensions", function (original, dx, dy) {
-            let { points, width, height } = original.shape;
-            width += dx;
-            height += dy;
-            points = points || [];
+    const DrawingClass = foundry.canvas?.placeables?.Drawing || Drawing;
+    libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.rescaleDimensions`, function (original, dx, dy) {
+        let { points, width, height } = original.shape;
+        width += dx;
+        height += dy;
+        points = points || [];
 
-            // Rescale polygon points
-            if (this.isPolygon) {
-                const scaleX = 1 + (dx / original.shape.width);
-                const scaleY = 1 + (dy / original.shape.height);
-                points = points.map((p, i) => p * (i % 2 ? scaleY : scaleX));
-            }
+        // Rescale polygon points
+        if (this.isPolygon) {
+            const scaleX = 1 + (dx / original.shape.width);
+            const scaleY = 1 + (dy / original.shape.height);
+            points = points.map((p, i) => p * (i % 2 ? scaleY : scaleX));
+        }
 
-            // Normalize the shape
-            return this.constructor.normalizeShape({
-                x: original.x,
-                y: original.y,
-                shape: { width: Math.roundFast(width), height: Math.roundFast(height), points }
-            });
-        }, libWrapper.OVERRIDE);
-    } else {
-        Drawing.prototype._rescaleDimensions = function (original, dx, dy) {
-            return Drawing.rescaleDimensions(original, dx, dy);
-        };
-    }
+        // Normalize the shape
+        return this.constructor.normalizeShape({
+            x: original.x,
+            y: original.y,
+            shape: { width: Math.roundFast(width), height: Math.roundFast(height), points }
+        });
+    }, libWrapper.OVERRIDE);
+     
 });
 
 function preProcess(data) {
@@ -73,16 +67,22 @@ Hooks.on("preUpdateDrawing", (document, data) => {
 });
 
 Hooks.once("init", () => {
-    if (foundry.utils.isNewerVersion(game.version, 11)) {
-        Hooks.on("updateDrawing", (document, changes) => {
-            if (!document.rendered) {
-                return;
-            }
 
-            if (changes.flags && (changes.flags[MODULE_ID] !== undefined
-                || changes.flags[`-=${MODULE_ID}`] !== undefined)) {
-                document.object.refresh();
-            }
-        });
-    }
+    Hooks.on("updateDrawing", (document, changes) => {
+        if (!document.rendered) {
+            return;
+        }
+
+        // Refresh when module flags change
+        if (changes.flags && (changes.flags[MODULE_ID] !== undefined
+            || changes.flags[`-=${MODULE_ID}`] !== undefined)) {
+            document.object.refresh();
+        }
+        
+        // Also refresh when text changes (to ensure text rendering updates)
+        if (changes.text !== undefined) {
+            document.object.refresh();
+        }
+    });
+    
 });

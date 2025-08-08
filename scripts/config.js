@@ -1,23 +1,60 @@
 import { MODULE_ID } from "./const.js";
-import { cleanData, saveValue, stringifyValue } from "./utils.js";
+import { saveValue, stringifyValue } from "./utils.js";
 
 Hooks.once("libWrapper.Ready", () => {
-    libWrapper.register(MODULE_ID, "DrawingConfig.prototype._getSubmitData", function (wrapped, ...args) {
-        const data = foundry.utils.flattenObject(wrapped(...args));
+    libWrapper.register(MODULE_ID, "foundry.applications.api.DocumentSheetV2.prototype._prepareSubmitData", 
+        
+    function (wrapped, event, form, formData, updateData) {
+        // 1) Start with the prepared data from the base sheet
+        const prepared = wrapped(event, form, formData, updateData);
 
-        if (this.form.querySelector(`input[class="${MODULE_ID}--lineStyle-dash"]`).checked) {
+        // 2) Work in flattened space just like the old implementation
+        const data = foundry.utils.flattenObject(prepared);
+
+        // ---- lineStyle.dash handling ----
+        // Read the UI state from the provided form element
+        const dashToggle = form?.querySelector(`input.${MODULE_ID}--lineStyle-dash`);
+        if (dashToggle?.checked) {
+            // Ensure we have a 2-length numeric array; coerce strings -> numbers with sane defaults
+            const a = data[`flags.${MODULE_ID}.lineStyle.dash`];
+            const d0 = Array.isArray(a) ? a[0] : undefined;
+            const d1 = Array.isArray(a) ? a[1] : undefined;
             data[`flags.${MODULE_ID}.lineStyle.dash`] = [
-                Number(data[`flags.${MODULE_ID}.lineStyle.dash`][0]) || 8,
-                Number(data[`flags.${MODULE_ID}.lineStyle.dash`][1]) || 5
+            Number(d0) || 8,
+            Number(d1) || 5
             ];
         } else {
             data[`flags.${MODULE_ID}.lineStyle.dash`] = null;
         }
 
-        const processValue = name => {
+        // ---- helpers ----
+        const processValue = (name) => {
             data[name] = saveValue(data[name]);
         };
 
+        const processStringArray = (name) => {
+            if (data[name] == null) {
+            data[name] = [];
+            } else if (!Array.isArray(data[name])) {
+            data[name] = [data[name]];
+            }
+            if (data[name].every(v => !v)) {
+            data[name] = null;
+            }
+        };
+
+        const processNumberArray = (name) => {
+            if (data[name] == null) {
+            data[name] = [];
+            } else if (!Array.isArray(data[name])) {
+            data[name] = [data[name]];
+            }
+            if (data[name].every(v => v === null)) {
+            data[name] = null;
+            }
+        };
+
+        // ---- numeric-ish values coerced through saveValue ----
         processValue(`flags.${MODULE_ID}.fillStyle.texture.width`);
         processValue(`flags.${MODULE_ID}.fillStyle.texture.height`);
         processValue(`flags.${MODULE_ID}.fillStyle.transform.position.x`);
@@ -26,44 +63,126 @@ Hooks.once("libWrapper.Ready", () => {
         processValue(`flags.${MODULE_ID}.fillStyle.transform.pivot.y`);
         processValue(`flags.${MODULE_ID}.textStyle.wordWrapWidth`);
 
-        const processStringArray = name => {
-            if (data[name] == null) {
-                data[name] = [];
-            } else if (!Array.isArray(data[name])) {
-                data[name] = [data[name]];
-            }
-
-            if (data[name].every(v => !v)) {
-                data[name] = null;
-            }
-        };
-
-        const processNumberArray = name => {
-            if (data[name] == null) {
-                data[name] = [];
-            } else if (!Array.isArray(data[name])) {
-                data[name] = [data[name]];
-            }
-
-            if (data[name].every(v => v === null)) {
-                data[name] = null;
-            }
-        };
-
+        // ---- arrays from form inputs ----
         processStringArray(`flags.${MODULE_ID}.textStyle.fill`);
         processNumberArray(`flags.${MODULE_ID}.textStyle.fillGradientStops`);
 
-        return foundry.utils.flattenObject(cleanData(data, { deletionKeys: !this.options.configureDefault }));
-    }, libWrapper.WRAPPER);
+        // ---- temporary workaround: ensure formData.object.shape exists and is populated ----
+        const shapeEntries = Object.entries(data).filter(([k]) => k.startsWith("shape."));
+        if (shapeEntries.length) {
+            data.shape = data.shape ?? {};
+            for (const [k, v] of shapeEntries) {
+                const prop = k.slice("shape.".length);
+                data.shape[prop] = v;
+                delete data[k];
+            }
+        }
+
+        return data;
+        }, libWrapper.WRAPPER);
 });
 
-Hooks.on("renderDrawingConfig", (app, html) => {
+// Helper function to handle both jQuery and HTMLElement with fallback to jQuery when available
+function getDOMHelper(htmlOrElement) {
+    // If it's already jQuery, return it
+    if (htmlOrElement?.find) return htmlOrElement;
+    
+    // If it's HTMLElement and jQuery is available, wrap it
+    const element = htmlOrElement?.jquery ? htmlOrElement[0] : 
+                   (htmlOrElement instanceof HTMLElement ? htmlOrElement : null);
+    
+    if (element && typeof $ !== 'undefined') {
+        return $(element);
+    }
+    
+    // Fallback: create a minimal jQuery-like interface
+    return createMinimalJQuery(element);
+}
+
+function createMinimalJQuery(element) {
+    if (!element) return { find: () => ({ length: 0, append: () => {}, after: () => {}, click: () => {}, val: () => '', change: () => {}, closest: () => ({ length: 0 }), eq: () => ({ length: 0, val: () => '' }), replaceWith: () => {}, remove: () => {} }) };
+    
+    return {
+        find: (selector) => {
+            const found = element.querySelector(selector);
+            return createMinimalJQuery(found);
+        },
+        append: (html) => {
+            if (typeof html === 'string') {
+                element.insertAdjacentHTML('beforeend', html);
+            } else {
+                element.appendChild(html);
+            }
+            return createMinimalJQuery(element);
+        },
+        after: (html) => {
+            if (typeof html === 'string') {
+                element.insertAdjacentHTML('afterend', html);
+            } else {
+                element.parentNode.insertBefore(html, element.nextSibling);
+            }
+            return createMinimalJQuery(element);
+        },
+        replaceWith: (html) => {
+            if (typeof html === 'string') {
+                element.outerHTML = html;
+            } else {
+                element.parentNode.replaceChild(html, element);
+            }
+            return createMinimalJQuery(element);
+        },
+        closest: (selector) => {
+            const found = element.closest(selector);
+            return createMinimalJQuery(found);
+        },
+        click: (handler) => {
+            if (element) element.addEventListener('click', handler);
+            return createMinimalJQuery(element);
+        },
+        change: (handler) => {
+            if (element) element.addEventListener('change', handler);
+            return createMinimalJQuery(element);
+        },
+        val: (value) => {
+            if (arguments.length === 0) {
+                return element?.value || '';
+            }
+            if (element) element.value = value;
+            return createMinimalJQuery(element);
+        },
+        eq: (index) => {
+            return createMinimalJQuery(element);
+        },
+        attr: (name, value) => {
+            if (arguments.length === 1) {
+                return element?.getAttribute(name) || '';
+            }
+            if (element) element.setAttribute(name, value);
+            return createMinimalJQuery(element);
+        },
+        remove: () => {
+            if (element && element.parentNode) {
+                element.parentNode.removeChild(element);
+            }
+            return createMinimalJQuery(null);
+        },
+        length: element ? 1 : 0
+    };
+}
+
+Hooks.on("renderDrawingConfig", (app, root, data) => {
+    // Use our DOM helper that works with both jQuery and HTMLElement
+    // In v13, 'root' is HTMLElement and 'data' is frozen/immutable
+    // In v12, 'root' might be jQuery and 'data' can be mutated
+    // IMPORTANT: We only manipulate the DOM, never the data object (v13 safe)
+    const $ = getDOMHelper(root);
+    
     const document = app.document;
     const ls = document.getFlag(MODULE_ID, "lineStyle") ?? {};
     const fs = document.getFlag(MODULE_ID, "fillStyle") ?? {};
     const ts = document.getFlag(MODULE_ID, "textStyle") ?? {};
 
-    html.find(`.tab[data-tab="position"]`).append(`
+    $.find(`.tab[data-tab="position"]`).append(`
         <div class="form-group">
             <label>Invisible</label>
             <div class="form-fields">
@@ -73,11 +192,11 @@ Hooks.on("renderDrawingConfig", (app, html) => {
         </div>
     `);
 
-    html.find(`input[name="text"]`).replaceWith(`
-        <textarea name="text" style="font-family: var(--font-primary); min-height: calc(var(--form-field-height) + 3px); height: 0; border-color: var(--color-border-light-tertiary);">${document.text ?? ""}</textarea>
+    $.find(`input[name="text"]`).replaceWith(`
+        <textarea name="text" style="font-family: var(--font-primary); min-height: calc(var(--form-field-height) + 3px); height: 100; border-color: var(--color-border-light-tertiary);">${document.text ?? ""}</textarea>
     `);
 
-    html.find(`input[name="strokeWidth"]`).closest(".form-group").after(`
+    $.find(`input[name="strokeWidth"]`).closest(".form-group").after(`
         <div class="form-group">
             <label>Dashed <span class="units">(Pixels)</span></label>
             <div class="form-fields">
@@ -86,12 +205,12 @@ Hooks.on("renderDrawingConfig", (app, html) => {
                 <label>Gap</label>
                 <input type="number" name="flags.${MODULE_ID}.lineStyle.dash" min="0.1" step="0.1" placeholder="5" value="${ls.dash?.[1] ?? "5"}">
                 &nbsp;&nbsp;&nbsp;
-                <input type="checkbox" class="${MODULE_ID}--lineStyle-dash" ${ls.dash ? "checked" : ""}>
+                <input type="checkbox" name="flags.${MODULE_ID}.lineStyle.dashEnabled" class="${MODULE_ID}--lineStyle-dash" ${ls.dash ? "checked" : ""}>
             </div>
         </div>
     `);
 
-    html.find(`div[data-tab="fill"]`).append(`
+    $.find(`div[data-tab="fill"]`).append(`
         <div class="form-group">
             <label>Texture Size <span class="units">(Pixels or %)</span></label>
             <div class="form-fields">
@@ -143,7 +262,7 @@ Hooks.on("renderDrawingConfig", (app, html) => {
         </div>
     `);
 
-    html.find(`select[name="fontFamily"]`).closest(".form-group").after(`
+    $.find(`select[name="fontFamily"]`).closest(".form-group").after(`
         <div class="form-group">
             <label>Font Style</label>
             <select name="flags.${MODULE_ID}.textStyle.fontStyle">
@@ -179,7 +298,7 @@ Hooks.on("renderDrawingConfig", (app, html) => {
         </div>
     `);
 
-    html.find(`input[name="fontSize"]`).closest(".form-group").after(`
+    $.find(`input[name="fontSize"]`).closest(".form-group").after(`
         <div class="form-group">
             <label>Leading <span class="units">(Pixels)</span></label>
             <input type="number" name="flags.${MODULE_ID}.textStyle.leading" min="0" step="0.1" placeholder="0" value="${ts.leading ?? "0"}">
@@ -194,33 +313,35 @@ Hooks.on("renderDrawingConfig", (app, html) => {
         </div>
     `);
 
-    html.find(`input[name="textColor"]`).closest(".form-fields").append(`
+    $.find(`input[name="textColor"]`).closest(".form-fields").append(`
         &nbsp;
         <input type="number" name="flags.${MODULE_ID}.textStyle.fillGradientStops" min="0" max="1" step="0.001" placeholder="" title="Color Stop" value="${ts?.fillGradientStops?.[0] ?? ""}">
         &nbsp;
         <a title="Add Color" class="${MODULE_ID}--textStyle-fill--add" style="flex: 0;"><i class="fas fa-plus fa-fw" style="margin: 0;"></i></a>
         <a title="Remove Color" class="${MODULE_ID}--textStyle-fill--remove" style="flex: 0;"><i class="fas fa-minus fa-fw" style="margin: 0;"></i></a>
     `);
-    html.find(`a[class="${MODULE_ID}--textStyle-fill--add"]`).click(event => {
-        html.find(`input[name="textColor"]`).closest(".form-group").after(createTextColor(
-            html.find(`input[name="textColor"]`).val(),
-            html.find(`input[name="flags.${MODULE_ID}.textStyle.fillGradientStops"]`).eq(0).val()
+    
+    $.find(`a[class="${MODULE_ID}--textStyle-fill--add"]`).click(event => {
+        $.find(`input[name="textColor"]`).closest(".form-group").after(createTextColor(
+            $.find(`input[name="textColor"]`).val(),
+            $.find(`input[name="flags.${MODULE_ID}.textStyle.fillGradientStops"]`).eq(0).val()
         ));
         app.setPosition(app.position);
     });
-    html.find(`a[class="${MODULE_ID}--textStyle-fill--remove"]`).click(event => {
-        html.find(`input[name="textColor"],input[data-edit="textColor"]`).val(
-            html.find(`input[name="flags.${MODULE_ID}.textStyle.fill"]`).eq(0).val() || "#ffffff"
+    
+    $.find(`a[class="${MODULE_ID}--textStyle-fill--remove"]`).click(event => {
+        $.find(`input[name="textColor"],input[data-edit="textColor"]`).val(
+            $.find(`input[name="flags.${MODULE_ID}.textStyle.fill"]`).eq(0).val() || "#ffffff"
         );
-        html.find(`input[name="flags.${MODULE_ID}.textStyle.fillGradientStops"]`).eq(0).val(
-            html.find(`input[name="flags.${MODULE_ID}.textStyle.fillGradientStops"]`).eq(1).val() ?? ""
+        $.find(`input[name="flags.${MODULE_ID}.textStyle.fillGradientStops"]`).eq(0).val(
+            $.find(`input[name="flags.${MODULE_ID}.textStyle.fillGradientStops"]`).eq(1).val() ?? ""
         );
-        html.find(`input[name="flags.${MODULE_ID}.textStyle.fill"]`).eq(0).closest(".form-group").remove();
+        $.find(`input[name="flags.${MODULE_ID}.textStyle.fill"]`).eq(0).closest(".form-group").remove();
         app.setPosition(app.position);
     });
 
     const createTextColor = (fill, stop) => {
-        const group = $(`
+        const groupHTML = `
             <div class="form-group">
                 <label></label>
                 <div class="form-fields">
@@ -233,22 +354,42 @@ Hooks.on("renderDrawingConfig", (app, html) => {
                     <a title="Remove Color" style="flex: 0;"><i class="fas fa-minus fa-fw" style="margin: 0;"></i></a>
                 </div>
             </div>
-        `);
+        `;
 
-        group.find(`input[type="color"]`).change(event => {
-            group.find(`input[class="color"]`).val(event.target.value)
-        });
-        group.find(`a`).eq(0).click(event => {
-            $(event.target).closest(".form-group").after(createTextColor(
-                group.find(`input[class="color"]`).val(),
-                group.find(`input[name="flags.${MODULE_ID}.textStyle.fillGradientStops"]`).val()
-            ));
-            app.setPosition(app.position);
-        });
-        group.find(`a`).eq(1).click(event => {
-            $(event.target).closest(".form-group").remove();
-            app.setPosition(app.position);
-        });
+        // Create element and set up event handlers
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = groupHTML;
+        const group = tempDiv.firstElementChild;
+
+        const colorInput = group.querySelector('input[type="color"]');
+        const textInput = group.querySelector('input[class="color"]');
+        const addButton = group.querySelectorAll('a')[0];
+        const removeButton = group.querySelectorAll('a')[1];
+
+        if (colorInput && textInput) {
+            colorInput.addEventListener('change', (event) => {
+                textInput.value = event.target.value;
+            });
+        }
+
+        if (addButton) {
+            addButton.addEventListener('click', (event) => {
+                const currentFill = textInput ? textInput.value : fill;
+                const currentStop = group.querySelector(`input[name="flags.${MODULE_ID}.textStyle.fillGradientStops"]`)?.value || stop;
+                const newGroup = createTextColor(currentFill, currentStop);
+                group.parentNode.insertBefore(newGroup, group.nextSibling);
+                app.setPosition(app.position);
+            });
+        }
+
+        if (removeButton) {
+            removeButton.addEventListener('click', (event) => {
+                if (group.parentNode) {
+                    group.parentNode.removeChild(group);
+                }
+                app.setPosition(app.position);
+            });
+        }
 
         return group;
     }
@@ -257,13 +398,16 @@ Hooks.on("renderDrawingConfig", (app, html) => {
         const fill = Array.isArray(ts.fill) ? ts.fill : [ts.fill];
 
         for (let i = fill.length - 1; i >= 0; i--) {
-            html.find(`input[name="textColor"]`).closest(".form-group").after(
-                createTextColor(fill[i], ts?.fillGradientStops?.[i + 1])
-            );
+            const textColorInput = $.find(`input[name="textColor"]`);
+            const formGroup = getDOMHelper(textColorInput).closest(".form-group");
+            if (formGroup.length > 0) {
+                const newGroup = createTextColor(fill[i], ts?.fillGradientStops?.[i + 1]);
+                formGroup.after(newGroup);
+            }
         }
     }
 
-    html.find(`input[name="textAlpha"]`).closest(".form-group").before(`
+    $.find(`input[name="textAlpha"]`).closest(".form-group").before(`
         <div class="form-group">
             <label>Text Color Gradient</label>
             <select name="flags.${MODULE_ID}.textStyle.fillGradientType" data-dtype="Number">
@@ -273,7 +417,7 @@ Hooks.on("renderDrawingConfig", (app, html) => {
         </div>
     `);
 
-    html.find(`input[name="textAlpha"]`).closest(".form-group").after(`
+    $.find(`input[name="textAlpha"]`).closest(".form-group").after(`
         <div class="form-group">
             <label>Text Alignment</label>
             <select name="flags.${MODULE_ID}.textStyle.align">
@@ -334,25 +478,25 @@ Hooks.on("renderDrawingConfig", (app, html) => {
         let textColor;
 
         if (event?.target.type === "color") {
-            textColor = html.find(`input[data-edit="textColor"]`).val();
+            textColor = $.find(`input[data-edit="textColor"]`).val();
         } else {
-            textColor = html.find(`input[name="textColor"]`).val();
+            textColor = $.find(`input[name="textColor"]`).val();
         }
 
         const strokeColor = Color.from(textColor || "#ffffff").hsv[2] > 0.6 ? "#000000" : "#ffffff";
 
-        html.find(`input[name="flags.advanced-drawing-tools.textStyle.stroke"]`).attr("placeholder", strokeColor);
-        html.find(`input[data-edit="flags.advanced-drawing-tools.textStyle.stroke"]`).val(strokeColor);
+        $.find(`input[name="flags.advanced-drawing-tools.textStyle.stroke"]`).attr("placeholder", strokeColor);
+        $.find(`input[data-edit="flags.advanced-drawing-tools.textStyle.stroke"]`).val(strokeColor);
     };
 
     updateStrokeColorPlaceholder();
 
-    html.find(`input[name="textColor"],input[data-edit="textColor"]`).change(event => updateStrokeColorPlaceholder(event));
+    $.find(`input[name="textColor"],input[data-edit="textColor"]`).change(event => updateStrokeColorPlaceholder(event));
 
     const updateStrokeThicknessPlaceholder = () => {
-        const fontSize = html.find(`input[name="fontSize"]`).val();
+        const fontSize = $.find(`input[name="fontSize"]`).val();
 
-        html.find(`input[name="flags.advanced-drawing-tools.textStyle.strokeThickness"]`).attr(
+        $.find(`input[name="flags.advanced-drawing-tools.textStyle.strokeThickness"]`).attr(
             "placeholder",
             Math.max(Math.round(fontSize / 32), 2)
         );
@@ -360,12 +504,12 @@ Hooks.on("renderDrawingConfig", (app, html) => {
 
     updateStrokeThicknessPlaceholder();
 
-    html.find(`input[name="fontSize"]`).change(event => updateStrokeThicknessPlaceholder(event));
+    $.find(`input[name="fontSize"]`).change(event => updateStrokeThicknessPlaceholder(event));
 
     const updateDropShadowBlurPlaceholder = () => {
-        const fontSize = html.find(`input[name="fontSize"]`).val();
+        const fontSize = $.find(`input[name="fontSize"]`).val();
 
-        html.find(`input[name="flags.advanced-drawing-tools.textStyle.dropShadowBlur"]`).attr(
+        $.find(`input[name="flags.advanced-drawing-tools.textStyle.dropShadowBlur"]`).attr(
             "placeholder",
             Math.max(Math.round(fontSize / 16), 2)
         );
@@ -373,9 +517,30 @@ Hooks.on("renderDrawingConfig", (app, html) => {
 
     updateDropShadowBlurPlaceholder();
 
-    html.find(`input[name="fontSize"]`).change(event => updateDropShadowBlurPlaceholder(event));
+    $.find(`input[name="fontSize"]`).change(event => updateDropShadowBlurPlaceholder(event));
 
-    app.options.height = "auto";
-    app.position.height = "auto";
-    app.setPosition(app.position);
+    // Safely set height properties with defensive checks
+    try {
+        if (app.options && typeof app.options === 'object') {
+            if (Object.isExtensible(app.options)) {
+                app.options.height = "auto";
+            }
+        }
+        
+        if (app.position && typeof app.position === 'object') {
+            if (Object.isExtensible(app.position)) {
+                app.position.height = "auto";
+            }
+        }
+        
+        app.setPosition(app.position);
+    } catch (error) {
+        console.warn("Advanced Drawing Tools: Could not set auto height for config dialog", error);
+        // Fallback: just call setPosition without modifying height
+        try {
+            app.setPosition();
+        } catch (fallbackError) {
+            console.warn("Advanced Drawing Tools: Could not resize config dialog", fallbackError);
+        }
+    }
 });

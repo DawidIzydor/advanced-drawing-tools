@@ -5,38 +5,22 @@ Hooks.on("refreshDrawing", drawing => {
 });
 
 Hooks.once("libWrapper.Ready", () => {
-    const getInteractionData = foundry.utils.isNewerVersion(game.version, 11)
-        ? (event) => event.interactionData
-        : (event) => event.data;
-    const getOriginalData = foundry.utils.isNewerVersion(game.version, 11)
-        ? (drawing, event) => event.interactionData.originalData
-        : (drawing, event) => drawing._original;
-    const setOriginalData = foundry.utils.isNewerVersion(game.version, 11)
-        ? (drawing, event) => event.interactionData.originalData = drawing.document.toObject()
-        : (drawing, event) => drawing._original = drawing.document.toObject();
-    const setRestoreOriginalData = foundry.utils.isNewerVersion(game.version, 11)
-        ? (drawing, event, value) => event.interactionData.restoreOriginalData = value
-        : (drawing, event, value) => { };
-    const refreshSize = foundry.utils.isNewerVersion(game.version, 12)
-        ? (drawing) => drawing.renderFlags.set({ refreshSize: true })
-        : foundry.utils.isNewerVersion(game.version, 11)
-            ? (drawing) => drawing.renderFlags.set({ refreshShape: true })
-            : (drawing) => drawing.refresh();
-    const isDraggingHandle = foundry.utils.isNewerVersion(game.version, 12)
-        ? (drawing, event) => event.interactionData.dragHandle
-        : (drawing, event) => drawing._dragHandle;
+    const getInteractionData = (event) => event.interactionData
+    const getOriginalData = (drawing, event) => event.interactionData.originalData
+    const setOriginalData = (drawing, event) => event.interactionData.originalData = drawing.document.toObject();
+    const setRestoreOriginalData = (drawing, event, value) => event.interactionData.restoreOriginalData = value;
+    const refreshSize = (drawing) => drawing.renderFlags.set({ refreshSize: true });
+    const isDraggingHandle = (drawing, event) => event.interactionData.dragHandle;
 
-    if (!foundry.utils.isNewerVersion(game.version, 12)) {
-        libWrapper.register(MODULE_ID, "Drawing.prototype.activateListeners", function (wrapped, ...args) {
-            wrapped(...args);
 
-            const pointerup = foundry.utils.isNewerVersion(game.version, 11) ? "pointerup" : "mouseup";
+    libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype.activateListeners`, function (wrapped, ...args) {
+        wrapped(...args);
 
-            this.frame.handle.off(pointerup).on(pointerup, this._onHandleMouseUp.bind(this));
-        }, libWrapper.WRAPPER);
-    }
+        this.frame.handle.off("pointerup").on("pointerup", this._onHandleMouseUp.bind(this));
+    }, libWrapper.WRAPPER);
+    
 
-    libWrapper.register(MODULE_ID, "Drawing.prototype._onHandleHoverIn", function (event) {
+    libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype._onHandleHoverIn`, function (event) {
         if (this._dragHandle) {
             return;
         }
@@ -56,7 +40,7 @@ Hooks.once("libWrapper.Ready", () => {
         }
     }, libWrapper.OVERRIDE);
 
-    libWrapper.register(MODULE_ID, "Drawing.prototype._onHandleHoverOut", function (event) {
+    libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype._onHandleHoverOut`, function (event) {
         const handle = getInteractionData(event).handle;
 
         if (handle instanceof PointHandle || handle instanceof EdgeHandle) {
@@ -67,28 +51,28 @@ Hooks.once("libWrapper.Ready", () => {
         }
     }, libWrapper.OVERRIDE);
 
-    if (!foundry.utils.isNewerVersion(game.version, 12)) {
-        libWrapper.register(MODULE_ID, "Drawing.prototype._onHandleMouseDown", function (event) {
-            const handle = event.target;
 
-            if (handle instanceof PointHandle || handle instanceof EdgeHandle) {
-                if (!this.document.locked) {
-                    this._dragHandle = true;
-                    handle._hover = true;
-                    handle.refresh();
-                    this._editHandle = handle;
-                } else {
-                    this._editHandle = null;
-                }
+    libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype._onHandleDragStart`, function (event) {
+        const handle = event.target;
+
+        if (handle instanceof PointHandle || handle instanceof EdgeHandle) {
+            if (!this.document.locked) {
+                this._dragHandle = true;
+                handle._hover = true;
+                handle.refresh();
+                this._editHandle = handle;
             } else {
-                if (!this.document.locked) {
-                    this._dragHandle = true;
-                }
+                this._editHandle = null;
             }
-        }, libWrapper.OVERRIDE);
-    }
+        } else {
+            if (!this.document.locked) {
+                this._dragHandle = true;
+            }
+        }
+    }, libWrapper.OVERRIDE);
+    
 
-    libWrapper.register(MODULE_ID, "Drawing.prototype._onDragLeftStart", function (wrapped, event) {
+    libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype._onDragLeftStart`, function (wrapped, event) {
         if (!isDraggingHandle(this, event)) {
             return wrapped(event);
         }
@@ -125,7 +109,7 @@ Hooks.once("libWrapper.Ready", () => {
         }
     }, libWrapper.MIXED);
 
-    libWrapper.register(MODULE_ID, "Drawing.prototype._onHandleDragMove", function (event) {
+    libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype._onHandleDragMove`, function (event) {
         let { handle, destination, origin } = getInteractionData(event);
 
         if (this._editHandle) {
@@ -136,9 +120,7 @@ Hooks.once("libWrapper.Ready", () => {
         let update;
 
         if (!originalEvent.shiftKey) {
-            if (foundry.utils.isNewerVersion(game.version, 12)) {
-                destination = this.layer.getSnappedPoint(destination);
-            }
+            destination = this.layer.getSnappedPoint(destination);
         }
 
         // Pan the canvas if the drag event approaches the edge
@@ -167,7 +149,7 @@ Hooks.once("libWrapper.Ready", () => {
             const dx = destination.x - origin.x;
             const dy = destination.y - origin.y;
 
-            update = this._rescaleDimensions(getOriginalData(this, event), dx, dy);
+            update = ((drawing, original, dx, dy) => (() => foundry.canvas?.placeables?.Drawing)().rescaleDimensions(original, dx, dy))(this, getOriginalData(this, event), dx, dy);
         }
 
         try {
@@ -176,7 +158,7 @@ Hooks.once("libWrapper.Ready", () => {
         } catch (err) { }
     }, libWrapper.OVERRIDE);
 
-    libWrapper.register(MODULE_ID, "Drawing.prototype._onHandleDragDrop", function (event) {
+    libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype._onHandleDragDrop`, function (event) {
         let { handle, destination, origin } = getInteractionData(event);
 
         if (this._editHandle) {
@@ -189,11 +171,7 @@ Hooks.once("libWrapper.Ready", () => {
         setRestoreOriginalData(this, event, false);
 
         if (!originalEvent.shiftKey) {
-            if (foundry.utils.isNewerVersion(game.version, 12)) {
-                destination = this.layer.getSnappedPoint(destination);
-            } else {
-                destination = canvas.grid.getSnappedPosition(destination.x, destination.y, this.layer.gridPrecision);
-            }
+            destination = this.layer.getSnappedPoint(destination);
         }
 
         if (handle instanceof PointHandle || handle instanceof EdgeHandle) {
@@ -220,35 +198,35 @@ Hooks.once("libWrapper.Ready", () => {
                 update.shape.points[handle.index * 2 + 1] = point.y;
             }
 
-            update = this._rescaleDimensions(update, 0, 0);
+            update = ((drawing, original, dx, dy) => (() => foundry.canvas?.placeables?.Drawing)().rescaleDimensions(original, dx, dy))(this, update, 0, 0);
         } else {
             // Update Drawing dimensions
             const dx = destination.x - origin.x;
             const dy = destination.y - origin.y;
 
-            update = this._rescaleDimensions(getOriginalData(this, event), dx, dy);
+            update = ((drawing, original, dx, dy) => (() => foundry.canvas?.placeables?.Drawing)().rescaleDimensions(original, dx, dy))(this, getOriginalData(this, event), dx, dy);
         }
 
         return this.document.update(update, { diff: false });
     }, libWrapper.OVERRIDE);
 
-    if (foundry.utils.isNewerVersion(game.version, 12)) {
-        libWrapper.register(MODULE_ID, "Drawing.prototype._onClickLeft", function (wrapped, event) {
-            this._editHandle = null;
 
-            if (this._editHandles?.points.children.includes(event.target)
-                || this._editHandles?.edges.children.includes(event.target)) {
-                event.interactionData.dragHandle = true;
-                event.stopPropagation();
-                this._editHandle = event.target;
-                return;
-            }
+    libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype._onClickLeft`, function (wrapped, event) {
+        this._editHandle = null;
 
-            return wrapped(event);
-        }, libWrapper.MIXED);
-    }
+        if (this._editHandles?.points.children.includes(event.target)
+            || this._editHandles?.edges.children.includes(event.target)) {
+            event.interactionData.dragHandle = true;
+            event.stopPropagation();
+            this._editHandle = event.target;
+            return;
+        }
 
-    libWrapper.register(MODULE_ID, "Drawing.prototype._onClickRight", function (wrapped, event) {
+        return wrapped(event);
+    }, libWrapper.MIXED);
+    
+
+    libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype._onClickRight`, function (wrapped, event) {
         let handle = getInteractionData(event).handle;
 
         if (this._editHandle) {
@@ -280,7 +258,7 @@ Hooks.once("libWrapper.Ready", () => {
             }
 
             update.shape.points.splice(handle.index * 2, 2);
-            update = this._rescaleDimensions(update, 0, 0);
+            update = ((drawing, original, dx, dy) => (() => foundry.canvas?.placeables?.Drawing)().rescaleDimensions(original, dx, dy))(this, update, 0, 0);
 
             return this.document.update(update, { diff: false });
         }
@@ -288,19 +266,19 @@ Hooks.once("libWrapper.Ready", () => {
         return wrapped(event);
     }, libWrapper.MIXED);
 
-    if (!foundry.utils.isNewerVersion(game.version, 12)) {
-        Drawing.prototype._onHandleMouseUp = function (event) {
-            if (!getOriginalData(this, event)) {
-                this._dragHandle = false;
-                this._editHandle = null;
-            }
-        };
-    }
+
+    (() => foundry.canvas?.placeables?.Drawing)().prototype._onHandleMouseUp = function (event) {
+        if (!getOriginalData(this, event)) {
+            this._dragHandle = false;
+            this._editHandle = null;
+        }
+    };
+    
 });
 
-Drawing.prototype._editMode = false;
+(() => foundry.canvas?.placeables?.Drawing)().prototype._editMode = false;
 
-Drawing.prototype._toggleEditMode = function (active) {
+(() => foundry.canvas?.placeables?.Drawing)().prototype._toggleEditMode = function (active) {
     this.layer.placeables.forEach(drawing => {
         if (drawing !== this && drawing._editMode) {
             drawing._editMode = false;
@@ -320,9 +298,9 @@ Drawing.prototype._toggleEditMode = function (active) {
     }
 };
 
-Drawing.prototype._editHandles = null;
+(() => foundry.canvas?.placeables?.Drawing)().prototype._editHandles = null;
 
-Drawing.prototype._refreshEditMode = function () {
+(() => foundry.canvas?.placeables?.Drawing)().prototype._refreshEditMode = function () {
     const document = this.document;
 
     if (this._editMode && this.layer.active && !document._source.locked && document.shape.type === "p") {
@@ -334,30 +312,12 @@ Drawing.prototype._refreshEditMode = function () {
             editHandles.points = editHandles.addChild(new PIXI.Container());
         }
 
-        const activateListeners = foundry.utils.isNewerVersion(game.version, 12)
-            ? (handle) => {
-                handle.off("pointerover").off("pointerout")
-                    .on("pointerover", this._onHandleHoverIn.bind(this))
-                    .on("pointerout", this._onHandleHoverOut.bind(this));
-                handle.eventMode = "static";
-            }
-            : foundry.utils.isNewerVersion(game.version, 11)
-                ? (handle) => {
-                    handle.off("pointerover").off("pointerout").off("pointerdown").off("pointerup")
-                        .on("pointerover", this._onHandleHoverIn.bind(this))
-                        .on("pointerout", this._onHandleHoverOut.bind(this))
-                        .on("pointerdown", this._onHandleMouseDown.bind(this))
-                        .on("pointerup", this._onHandleMouseUp.bind(this));
-                    handle.eventMode = "static";
-                }
-                : (handle) => {
-                    handle.off("mouseover").off("mouseout").off("mousedown").off("mouseup")
-                        .on("mouseover", this._onHandleHoverIn.bind(this))
-                        .on("mouseout", this._onHandleHoverOut.bind(this))
-                        .on("mousedown", this._onHandleMouseDown.bind(this))
-                        .on("mouseup", this._onHandleMouseUp.bind(this));
-                    handle.interactive = true;
-                };
+        const activateListeners = (handle) => {
+            handle.off("pointerover").off("pointerout")
+            .on("pointerover", this._onHandleHoverIn.bind(this))
+            .on("pointerout", this._onHandleHoverOut.bind(this));
+            handle.eventMode = "static";
+        };
 
         const points = document.shape.points;
 

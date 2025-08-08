@@ -82,101 +82,98 @@ export function saveValue(value) {
 }
 
 export function cleanData(data, { inplace = false, deletionKeys = false, keepOthers = true, partial = false }) {
-    const flatData = foundry.utils.flattenObject(data);
     let newData = {};
 
-    if (deletionKeys || inplace) {
-        for (const key of (partial ? [] : Object.keys(DEFAULT_FLAGS)).concat(Object.keys(flatData))) {
-            if (!(key.startsWith(`flags.${MODULE_ID}.`) && !key.includes(".-="))) {
+    function walk(obj, path = []) {
+        for (const [key, value] of Object.entries(obj)) {
+            const fullPath = [...path, key].join(".");
+
+            if (!(fullPath.startsWith(`flags.${MODULE_ID}.`) && !fullPath.includes(".-="))) {
+                if (keepOthers && !inplace) {
+                    setPath(newData, [...path, key], value);
+                }
                 continue;
             }
 
-            const split = key.split(".");
+            if (!(fullPath in DEFAULT_FLAGS)) {
+                continue;
+            }
 
-            for (let i = partial ? split.length - 1 : 1; i < split.length; i++) {
-                newData[`${split.slice(0, i).join(".")}.-=${split[i]}`] = null;
+            const defaultValue = DEFAULT_FLAGS[fullPath];
+            const normalizeValue = v => {
+                v = v ?? null;
+
+                if (parseValue(defaultValue)) {
+                    v = saveValue(v);
+                } else if (typeof v === "string") {
+                    if (!v) {
+                        v = null;
+                    } else {
+                        v = v.trim().toLowerCase();
+                    }
+                }
+                return v;
+            };
+
+            let finalValue;
+            if (Array.isArray(value)) {
+                finalValue = value.map(normalizeValue);
+            } else {
+                finalValue = normalizeValue(value);
+            }
+
+            if (finalValue != null && finalValue !== defaultValue && !finalValue.equals?.(defaultValue)) {
+                setPath(newData, [...path, key], finalValue);
+
+                if (deletionKeys || inplace) {
+                    for (let i = 1; i < fullPath.split(".").length; i++) {
+                        deletePath(newData, fullPath.split(".").slice(0, i).concat([`-=${fullPath.split(".")[i]}`]));
+                    }
+                }
+            } else if (!deletionKeys) {
+                setPath(newData, [...path, key], foundry.utils.deepClone(defaultValue));
             }
         }
     }
 
-    for (let [key, value] of Object.entries(flatData)) {
-        if (!(key.startsWith(`flags.${MODULE_ID}.`) && !key.includes(".-="))) {
-            if (keepOthers && !inplace) {
-                newData[key] = value;
-            }
-
-            continue;
+    function setPath(obj, pathArr, val) {
+        let target = obj;
+        for (let i = 0; i < pathArr.length - 1; i++) {
+            if (!(pathArr[i] in target)) target[pathArr[i]] = {};
+            target = target[pathArr[i]];
         }
-
-        if (!(key in DEFAULT_FLAGS)) {
-            continue;
-        }
-
-        const defaultValue = DEFAULT_FLAGS[key];
-        const normalizeValue = value => {
-            value = value ?? null;
-
-            if (parseValue(defaultValue)) {
-                value = saveValue(value);
-            } else if (typeof value === "string") {
-                if (!value) {
-                    value = null;
-                } else {
-                    value = value.trim().toLowerCase();
-                }
-            }
-
-            return value;
-        };
-
-        if (value instanceof Array) {
-            value = value.map(normalizeValue);
-        } else {
-            value = normalizeValue(value);
-        }
-
-        if (value != null && value !== defaultValue && !value.equals?.(defaultValue)) {
-            newData[key] = value;
-
-            if (deletionKeys || inplace) {
-                const split = key.split(".");
-
-                for (let i = 1; i < split.length; i++) {
-                    delete newData[`${split.slice(0, i).join(".")}.-=${split[i]}`];
-                }
-            }
-        } else if (!deletionKeys) {
-            newData[key] = foundry.utils.deepClone(defaultValue);
-        }
+        target[pathArr[pathArr.length - 1]] = val;
     }
+
+    function deletePath(obj, pathArr) {
+        let target = obj;
+        for (let i = 0; i < pathArr.length - 1; i++) {
+            if (!(pathArr[i] in target)) return;
+            target = target[pathArr[i]];
+        }
+        delete target[pathArr[pathArr.length - 1]];
+    }
+
+    walk(data);
 
     if (deletionKeys || inplace) {
         for (const key in newData) {
             if (!key.startsWith(`flags.${MODULE_ID}.`) && !key.startsWith(`flags.-=${MODULE_ID}`)) {
                 continue;
             }
-
             const split = key.split(".");
+            if (!split[split.length - 1].startsWith("-=")) continue;
 
-            if (!split[split.length - 1].startsWith("-=")) {
-                continue;
-            }
-
-            const prefix = `${split.slice(0, split.length - 1).join(".")}.${split[split.length - 1].slice(2)}.`;
-
-            delete newData[prefix.slice(0, prefix.length - 1)];
+            const prefix = `${split.slice(0, -1).join(".")}.${split[split.length - 1].slice(2)}.`;
+            delete newData[prefix.slice(0, -1)];
 
             for (const otherKey in newData) {
-                if (!otherKey.startsWith(prefix)) {
-                    continue;
+                if (otherKey.startsWith(prefix)) {
+                    delete newData[otherKey];
                 }
-
-                delete newData[otherKey];
             }
         }
     }
-
-    newData = foundry.utils.expandObject(Object.fromEntries(Object.entries(newData).sort((a, b) => b[0].length - a[0].length)));
 
     if (!inplace) {
         return newData;
@@ -194,3 +191,4 @@ export function cleanData(data, { inplace = false, deletionKeys = false, keepOth
 
     return data;
 }
+

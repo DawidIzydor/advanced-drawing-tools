@@ -1,8 +1,14 @@
 import { MODULE_ID, MODULE_NAME } from "./const.js";
 
-Hooks.on("renderDrawingHUD", (hud, html) => {
-    const edit = document.createElement("div");
+Hooks.on("renderDrawingHUD", (hud, root) => {
+    // Handle both v12 (jQuery) and v13 (HTMLElement) 
+    const element = root?.jquery ? root[0] : (root instanceof HTMLElement ? root : hud?.element);
+    if (!element) return;
 
+    const leftCol = element.querySelector(".col.left");
+    if (!leftCol) return;
+
+    const edit = document.createElement("div");
     edit.classList.add("control-icon");
 
     if (hud.object._editMode) {
@@ -13,23 +19,28 @@ Hooks.on("renderDrawingHUD", (hud, html) => {
     edit.dataset.action = `${MODULE_ID}.edit`;
     edit.innerHTML = `<i class="fas fa-draw-polygon"></i>`;
 
-    html.find(".col.left").append(edit);
-    html.find(`.control-icon[data-action="${MODULE_ID}.edit"]`).click(async event => {
-        await unlockDrawing(hud);
+    leftCol.appendChild(edit);
+    
+    // Add click handler for edit button
+    const editButton = element.querySelector(`.control-icon[data-action="${MODULE_ID}.edit"]`);
+    if (editButton) {
+        editButton.addEventListener("click", async (event) => {
+            await unlockDrawing(hud);
 
-        const drawing = hud.object;
+            const drawing = hud.object;
 
-        if (drawing.document.locked) {
-            return;
-        }
+            if (drawing.document.locked) {
+                return;
+            }
 
-        await drawing._convertToPolygon({ confirm: true });
+            await drawing._convertToPolygon({ confirm: true });
 
-        if (drawing.document.shape.type === "p") {
-            drawing._toggleEditMode();
-            hud.render(true);
-        }
-    });
+            if (drawing.document.shape.type === "p") {
+                drawing._toggleEditMode();
+                hud.render(true);
+            }
+        });
+    }
 
     if (hud.object.document.shape.type === "p") {
         const flipH = document.createElement("div");
@@ -39,24 +50,29 @@ Hooks.on("renderDrawingHUD", (hud, html) => {
         flipH.dataset.action = `${MODULE_ID}.flip-h`;
         flipH.innerHTML = `<i class="fas fa-arrows-alt-h"></i>`;
 
-        html.find(".col.left").append(flipH);
-        html.find(`.control-icon[data-action="${MODULE_ID}.flip-h"]`).click(async event => {
-            await unlockDrawing(hud);
+        leftCol.appendChild(flipH);
+        
+        // Add click handler for flip horizontal button
+        const flipHButton = element.querySelector(`.control-icon[data-action="${MODULE_ID}.flip-h"]`);
+        if (flipHButton) {
+            flipHButton.addEventListener("click", async (event) => {
+                await unlockDrawing(hud);
 
-            if (hud.object.document.locked) {
-                return;
-            }
+                if (hud.object.document.locked) {
+                    return;
+                }
 
-            const document = hud.object.document;
-            const width = Math.abs(document.shape.width);
-            const points = foundry.utils.deepClone(document.shape.points);
+                const document = hud.object.document;
+                const width = Math.abs(document.shape.width);
+                const points = foundry.utils.deepClone(document.shape.points);
 
-            for (let i = 0; i < points.length; i += 2) {
-                points[i] = width - points[i];
-            }
+                for (let i = 0; i < points.length; i += 2) {
+                    points[i] = width - points[i];
+                }
 
-            await document.update({ shape: { points } });
-        });
+                await document.update({ shape: { points } });
+            });
+        }
 
         const flipV = document.createElement("div");
 
@@ -65,24 +81,29 @@ Hooks.on("renderDrawingHUD", (hud, html) => {
         flipV.dataset.action = `${MODULE_ID}.flip-v`;
         flipV.innerHTML = `<i class="fas fa-arrows-alt-v"></i>`;
 
-        html.find(".col.left").append(flipV);
-        html.find(`.control-icon[data-action="${MODULE_ID}.flip-v"]`).click(async event => {
-            await unlockDrawing(hud);
+        leftCol.appendChild(flipV);
+        
+        // Add click handler for flip vertical button
+        const flipVButton = element.querySelector(`.control-icon[data-action="${MODULE_ID}.flip-v"]`);
+        if (flipVButton) {
+            flipVButton.addEventListener("click", async (event) => {
+                await unlockDrawing(hud);
 
-            if (hud.object.document.locked) {
-                return;
-            }
+                if (hud.object.document.locked) {
+                    return;
+                }
 
-            const document = hud.object.document;
-            const height = Math.abs(document.shape.height);
-            const points = foundry.utils.deepClone(document.shape.points);
+                const document = hud.object.document;
+                const height = Math.abs(document.shape.height);
+                const points = foundry.utils.deepClone(document.shape.points);
 
-            for (let i = 1; i < points.length; i += 2) {
-                points[i] = height - points[i];
-            }
+                for (let i = 1; i < points.length; i += 2) {
+                    points[i] = height - points[i];
+                }
 
-            await document.update({ shape: { points } });
-        });
+                await document.update({ shape: { points } });
+            });
+        }
     }
 });
 
