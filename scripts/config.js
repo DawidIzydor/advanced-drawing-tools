@@ -6,77 +6,98 @@ Hooks.once("libWrapper.Ready", () => {
         
     function (wrapped, event, form, formData, updateData) {
         // 1) Start with the prepared data from the base sheet
-        const prepared = wrapped(event, form, formData, updateData);
+        const data = wrapped(event, form, formData, updateData);
 
-        // 2) Work in flattened space just like the old implementation
-        const data = foundry.utils.flattenObject(prepared);
+        // Short return if not a Drawing
+        if(this.document.documentName != "Drawing")
+        {
+            return data;
+        }
 
         // ---- lineStyle.dash handling ----
         // Read the UI state from the provided form element
         const dashToggle = form?.querySelector(`input.${MODULE_ID}--lineStyle-dash`);
+        
+        // Ensure nested structure exists
+        data.flags = data.flags || {};
+        data.flags[MODULE_ID] = data.flags[MODULE_ID] || {};
+        data.flags[MODULE_ID].lineStyle = data.flags[MODULE_ID].lineStyle || {};
+        
         if (dashToggle?.checked) {
             // Ensure we have a 2-length numeric array; coerce strings -> numbers with sane defaults
-            const a = data[`flags.${MODULE_ID}.lineStyle.dash`];
+            const a = data.flags[MODULE_ID].lineStyle.dash;
             const d0 = Array.isArray(a) ? a[0] : undefined;
             const d1 = Array.isArray(a) ? a[1] : undefined;
-            data[`flags.${MODULE_ID}.lineStyle.dash`] = [
+            data.flags[MODULE_ID].lineStyle.dash = [
             Number(d0) || 8,
             Number(d1) || 5
             ];
         } else {
-            data[`flags.${MODULE_ID}.lineStyle.dash`] = null;
+            data.flags[MODULE_ID].lineStyle.dash = null;
         }
 
         // ---- helpers ----
-        const processValue = (name) => {
-            data[name] = saveValue(data[name]);
+        const processValue = (obj, path) => {
+            const keys = path.split('.');
+            let current = obj;
+            for (let i = 0; i < keys.length - 1; i++) {
+                current[keys[i]] = current[keys[i]] || {};
+                current = current[keys[i]];
+            }
+            const lastKey = keys[keys.length - 1];
+            current[lastKey] = saveValue(current[lastKey]);
         };
 
-        const processStringArray = (name) => {
-            if (data[name] == null) {
-            data[name] = [];
-            } else if (!Array.isArray(data[name])) {
-            data[name] = [data[name]];
+        const processStringArray = (obj, path) => {
+            const keys = path.split('.');
+            let current = obj;
+            for (let i = 0; i < keys.length - 1; i++) {
+                current[keys[i]] = current[keys[i]] || {};
+                current = current[keys[i]];
             }
-            if (data[name].every(v => !v)) {
-            data[name] = null;
+            const lastKey = keys[keys.length - 1];
+            
+            if (current[lastKey] == null) {
+                current[lastKey] = [];
+            } else if (!Array.isArray(current[lastKey])) {
+                current[lastKey] = [current[lastKey]];
+            }
+            if (current[lastKey].every(v => !v)) {
+                current[lastKey] = null;
             }
         };
 
-        const processNumberArray = (name) => {
-            if (data[name] == null) {
-            data[name] = [];
-            } else if (!Array.isArray(data[name])) {
-            data[name] = [data[name]];
+        const processNumberArray = (obj, path) => {
+            const keys = path.split('.');
+            let current = obj;
+            for (let i = 0; i < keys.length - 1; i++) {
+                current[keys[i]] = current[keys[i]] || {};
+                current = current[keys[i]];
             }
-            if (data[name].every(v => v === null)) {
-            data[name] = null;
+            const lastKey = keys[keys.length - 1];
+            
+            if (current[lastKey] == null) {
+                current[lastKey] = [];
+            } else if (!Array.isArray(current[lastKey])) {
+                current[lastKey] = [current[lastKey]];
+            }
+            if (current[lastKey].every(v => v === null)) {
+                current[lastKey] = null;
             }
         };
 
         // ---- numeric-ish values coerced through saveValue ----
-        processValue(`flags.${MODULE_ID}.fillStyle.texture.width`);
-        processValue(`flags.${MODULE_ID}.fillStyle.texture.height`);
-        processValue(`flags.${MODULE_ID}.fillStyle.transform.position.x`);
-        processValue(`flags.${MODULE_ID}.fillStyle.transform.position.y`);
-        processValue(`flags.${MODULE_ID}.fillStyle.transform.pivot.x`);
-        processValue(`flags.${MODULE_ID}.fillStyle.transform.pivot.y`);
-        processValue(`flags.${MODULE_ID}.textStyle.wordWrapWidth`);
+        processValue(data, `flags.${MODULE_ID}.fillStyle.texture.width`);
+        processValue(data, `flags.${MODULE_ID}.fillStyle.texture.height`);
+        processValue(data, `flags.${MODULE_ID}.fillStyle.transform.position.x`);
+        processValue(data, `flags.${MODULE_ID}.fillStyle.transform.position.y`);
+        processValue(data, `flags.${MODULE_ID}.fillStyle.transform.pivot.x`);
+        processValue(data, `flags.${MODULE_ID}.fillStyle.transform.pivot.y`);
+        processValue(data, `flags.${MODULE_ID}.textStyle.wordWrapWidth`);
 
         // ---- arrays from form inputs ----
-        processStringArray(`flags.${MODULE_ID}.textStyle.fill`);
-        processNumberArray(`flags.${MODULE_ID}.textStyle.fillGradientStops`);
-
-        // ---- temporary workaround: ensure formData.object.shape exists and is populated ----
-        const shapeEntries = Object.entries(data).filter(([k]) => k.startsWith("shape."));
-        if (shapeEntries.length) {
-            data.shape = data.shape ?? {};
-            for (const [k, v] of shapeEntries) {
-                const prop = k.slice("shape.".length);
-                data.shape[prop] = v;
-                delete data[k];
-            }
-        }
+        processStringArray(data, `flags.${MODULE_ID}.textStyle.fill`);
+        processNumberArray(data, `flags.${MODULE_ID}.textStyle.fillGradientStops`);
 
         return data;
         }, libWrapper.WRAPPER);
