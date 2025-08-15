@@ -24,27 +24,27 @@ Hooks.once("libWrapper.Ready", () => {
     }, libWrapper.OVERRIDE);
     libWrapper.ignore_conflicts(MODULE_ID, "precise-drawing-tools", "DrawingsLayer.prototype.gridPrecision");
 
-    const DrawingClass = foundry.canvas?.placeables?.Drawing || Drawing;
-    libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.rescaleDimensions`, function (original, dx, dy) {
-        let { points, width, height } = original.shape;
-        width += dx;
-        height += dy;
-        points = points || [];
+    // Scaling seems to work fine without it, but this code broke it, leaving it commented for now as I'm not sure what needs fixing
+    // libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.rescaleDimensions`, function (original, dx, dy) {
+    //     let { points, width, height } = original.shape;
+    //     width += dx;
+    //     height += dy;
+    //     points = points || [];
 
-        // Rescale polygon points
-        if (this.isPolygon) {
-            const scaleX = 1 + (dx / original.shape.width);
-            const scaleY = 1 + (dy / original.shape.height);
-            points = points.map((p, i) => p * (i % 2 ? scaleY : scaleX));
-        }
+    //     // Rescale polygon points
+    //     if (this.isPolygon) {
+    //         const scaleX = 1 + (dx / original.shape.width);
+    //         const scaleY = 1 + (dy / original.shape.height);
+    //         points = points.map((p, i) => p * (i % 2 ? scaleY : scaleX));
+    //     }
 
-        // Normalize the shape
-        return this.constructor.normalizeShape({
-            x: original.x,
-            y: original.y,
-            shape: { width: Math.roundFast(width), height: Math.roundFast(height), points }
-        });
-    }, libWrapper.OVERRIDE);
+    //     // Normalize the shape
+    //     return this.normalizeShape({
+    //         x: original.x,
+    //         y: original.y,
+    //         shape: { width: Math.round(width), height: Math.round(height), points }
+    //     });
+    // }, libWrapper.OVERRIDE);
      
 });
 

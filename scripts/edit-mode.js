@@ -99,7 +99,7 @@ Hooks.once("libWrapper.Ready", () => {
 
             update = { x, y, shape: { width, height, points: Array.from(points) } };
             update.shape.points.splice(handle.index * 2, 0, point.x, point.y);
-        } else if (handle instanceof ResizeHandle) {
+        } else if (handle instanceof foundry.canvas.containers.ResizeHandle) {
             return wrapped(event);
         }
 
