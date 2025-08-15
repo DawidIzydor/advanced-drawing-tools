@@ -166,9 +166,18 @@ function createMinimalJQuery(element) {
         },
         val: (value) => {
             if (arguments.length === 0) {
+                // For range-picker elements, try to get the value attribute first
+                if (element?.tagName === 'RANGE-PICKER') {
+                    return element.getAttribute('value') || element.value || '';
+                }
                 return element?.value || '';
             }
-            if (element) element.value = value;
+            if (element) {
+                if (element.tagName === 'RANGE-PICKER') {
+                    element.setAttribute('value', value);
+                }
+                element.value = value;
+            }
             return createMinimalJQuery(element);
         },
         eq: (index) => {
@@ -202,6 +211,132 @@ Hooks.on("renderDrawingConfig", (app, root, data) => {
     const ls = document.getFlag(MODULE_ID, "lineStyle") ?? {};
     const fs = document.getFlag(MODULE_ID, "fillStyle") ?? {};
     const ts = document.getFlag(MODULE_ID, "textStyle") ?? {};
+
+    // Add scrolling styles for the drawing config form
+    const styleId = `${MODULE_ID}-scrolling-styles`;
+    if (!globalThis.document.getElementById(styleId)) {
+        const style = globalThis.document.createElement('style');
+        style.id = styleId;
+        style.textContent = `
+            /* Make drawing config form scrollable - targeting proper selectors */
+            .app.drawing-config,
+            .app.sheet.drawing-config,
+            .app.${MODULE_ID}-scrollable-config,
+            [data-advanced-drawing-tools-scrollable="true"] {
+                max-height: 90vh;
+                resize: vertical;
+                overflow: hidden;
+            }
+            
+            /* Target the actual form content containers */
+            .app.drawing-config .sheet-body,
+            .app.drawing-config .form-body,
+            .app.drawing-config .window-content,
+            .app.sheet.drawing-config .sheet-body,
+            .app.sheet.drawing-config .form-body,
+            .app.sheet.drawing-config .window-content,
+            .app.${MODULE_ID}-scrollable-config .sheet-body,
+            .app.${MODULE_ID}-scrollable-config .form-body,
+            .app.${MODULE_ID}-scrollable-config .window-content,
+            [data-advanced-drawing-tools-scrollable="true"] .sheet-body,
+            [data-advanced-drawing-tools-scrollable="true"] .form-body,
+            [data-advanced-drawing-tools-scrollable="true"] .window-content {
+                max-height: ${Math.min(window.innerHeight * 0.8, 650)}px;
+                overflow-y: auto;
+                overflow-x: hidden;
+                padding-right: 8px;
+            }
+            
+            /* Scrollbar styling for all targeted containers */
+            .app.drawing-config .sheet-body::-webkit-scrollbar,
+            .app.drawing-config .form-body::-webkit-scrollbar,
+            .app.drawing-config .window-content::-webkit-scrollbar,
+            .app.sheet.drawing-config .sheet-body::-webkit-scrollbar,
+            .app.sheet.drawing-config .form-body::-webkit-scrollbar,
+            .app.sheet.drawing-config .window-content::-webkit-scrollbar,
+            .app.${MODULE_ID}-scrollable-config .sheet-body::-webkit-scrollbar,
+            .app.${MODULE_ID}-scrollable-config .form-body::-webkit-scrollbar,
+            .app.${MODULE_ID}-scrollable-config .window-content::-webkit-scrollbar {
+                width: 8px;
+            }
+            
+            .app.drawing-config .sheet-body::-webkit-scrollbar-track,
+            .app.drawing-config .form-body::-webkit-scrollbar-track,
+            .app.drawing-config .window-content::-webkit-scrollbar-track,
+            .app.sheet.drawing-config .sheet-body::-webkit-scrollbar-track,
+            .app.sheet.drawing-config .form-body::-webkit-scrollbar-track,
+            .app.sheet.drawing-config .window-content::-webkit-scrollbar-track,
+            .app.${MODULE_ID}-scrollable-config .sheet-body::-webkit-scrollbar-track,
+            .app.${MODULE_ID}-scrollable-config .form-body::-webkit-scrollbar-track,
+            .app.${MODULE_ID}-scrollable-config .window-content::-webkit-scrollbar-track {
+                background: var(--color-border-light-tertiary, #ccc);
+                border-radius: 4px;
+            }
+            
+            .app.drawing-config .sheet-body::-webkit-scrollbar-thumb,
+            .app.drawing-config .form-body::-webkit-scrollbar-thumb,
+            .app.drawing-config .window-content::-webkit-scrollbar-thumb,
+            .app.sheet.drawing-config .sheet-body::-webkit-scrollbar-thumb,
+            .app.sheet.drawing-config .form-body::-webkit-scrollbar-thumb,
+            .app.sheet.drawing-config .window-content::-webkit-scrollbar-thumb,
+            .app.${MODULE_ID}-scrollable-config .sheet-body::-webkit-scrollbar-thumb,
+            .app.${MODULE_ID}-scrollable-config .form-body::-webkit-scrollbar-thumb,
+            .app.${MODULE_ID}-scrollable-config .window-content::-webkit-scrollbar-thumb {
+                background: var(--color-border-dark, #666);
+                border-radius: 4px;
+            }
+            
+            .app.drawing-config .sheet-body::-webkit-scrollbar-thumb:hover,
+            .app.drawing-config .form-body::-webkit-scrollbar-thumb:hover,
+            .app.drawing-config .window-content::-webkit-scrollbar-thumb:hover,
+            .app.sheet.drawing-config .sheet-body::-webkit-scrollbar-thumb:hover,
+            .app.sheet.drawing-config .form-body::-webkit-scrollbar-thumb:hover,
+            .app.sheet.drawing-config .window-content::-webkit-scrollbar-thumb:hover,
+            .app.${MODULE_ID}-scrollable-config .sheet-body::-webkit-scrollbar-thumb:hover,
+            .app.${MODULE_ID}-scrollable-config .form-body::-webkit-scrollbar-thumb:hover,
+            .app.${MODULE_ID}-scrollable-config .window-content::-webkit-scrollbar-thumb:hover {
+                background: var(--color-border-dark-primary, #333);
+            }
+            
+            /* Form group spacing improvements */
+            .app.drawing-config .form-group:last-child,
+            .app.sheet.drawing-config .form-group:last-child,
+            .app.${MODULE_ID}-scrollable-config .form-group:last-child {
+                margin-bottom: 1rem;
+            }
+            
+            /* Ensure tabs don't interfere with scrolling - stick to top */
+            .app.drawing-config .sheet-tabs,
+            .app.drawing-config .tabs,
+            .app.sheet.drawing-config .sheet-tabs,
+            .app.sheet.drawing-config .tabs,
+            .app.${MODULE_ID}-scrollable-config .sheet-tabs,
+            .app.${MODULE_ID}-scrollable-config .tabs {
+                position: sticky;
+                top: 0;
+                background: var(--color-bg, #f8f9fa);
+                z-index: 10;
+                margin-bottom: 0.5rem;
+                border-bottom: 1px solid var(--color-border-light-tertiary, #ccc);
+                padding-bottom: 0.25rem;
+            }
+            
+            /* Better spacing for text style fields */
+            .app.drawing-config .tab[data-tab="text"] .form-group,
+            .app.sheet.drawing-config .tab[data-tab="text"] .form-group,
+            .app.${MODULE_ID}-scrollable-config .tab[data-tab="text"] .form-group {
+                margin-bottom: 0.75rem;
+            }
+            
+            /* Ensure form content has proper padding and doesn't clip */
+            .app.drawing-config form,
+            .app.sheet.drawing-config form,
+            .app.${MODULE_ID}-scrollable-config form {
+                padding-bottom: 1rem;
+            }
+        `;
+        globalThis.document.head.appendChild(style);
+    }
 
     $.find(`.tab[data-tab="position"]`).append(`
         <div class="form-group">
@@ -319,7 +454,13 @@ Hooks.on("renderDrawingConfig", (app, root, data) => {
         </div>
     `);
 
-    $.find(`input[name="fontSize"]`).closest(".form-group").after(`
+    // Try to find fontSize field - first try input, then range-picker (V13)
+    let fontSizeElement = $.find(`input[name="fontSize"]`);
+    if (fontSizeElement.length === 0) {
+        fontSizeElement = $.find(`range-picker[name="fontSize"]`);
+    }
+    
+    fontSizeElement.closest(".form-group").after(`
         <div class="form-group">
             <label>Leading <span class="units">(Pixels)</span></label>
             <input type="number" name="flags.${MODULE_ID}.textStyle.leading" min="0" step="0.1" placeholder="0" value="${ts.leading ?? "0"}">
@@ -428,7 +569,13 @@ Hooks.on("renderDrawingConfig", (app, root, data) => {
         }
     }
 
-    $.find(`input[name="textAlpha"]`).closest(".form-group").before(`
+    // Try to find textAlpha field - first try input, then range-picker (V13)
+    let textAlphaElement = $.find(`input[name="textAlpha"]`);
+    if (textAlphaElement.length === 0) {
+        textAlphaElement = $.find(`range-picker[name="textAlpha"]`);
+    }
+    
+    textAlphaElement.closest(".form-group").before(`
         <div class="form-group">
             <label>Text Color Gradient</label>
             <select name="flags.${MODULE_ID}.textStyle.fillGradientType" data-dtype="Number">
@@ -438,7 +585,7 @@ Hooks.on("renderDrawingConfig", (app, root, data) => {
         </div>
     `);
 
-    $.find(`input[name="textAlpha"]`).closest(".form-group").after(`
+    textAlphaElement.closest(".form-group").after(`
         <div class="form-group">
             <label>Text Alignment</label>
             <select name="flags.${MODULE_ID}.textStyle.align">
@@ -515,7 +662,14 @@ Hooks.on("renderDrawingConfig", (app, root, data) => {
     $.find(`input[name="textColor"],input[data-edit="textColor"]`).change(event => updateStrokeColorPlaceholder(event));
 
     const updateStrokeThicknessPlaceholder = () => {
-        const fontSize = $.find(`input[name="fontSize"]`).val();
+        // Try to get fontSize from input first, then range-picker
+        let fontSize = $.find(`input[name="fontSize"]`).val();
+        if (!fontSize) {
+            const rangePicker = $.find(`range-picker[name="fontSize"]`);
+            if (rangePicker.length > 0) {
+                fontSize = rangePicker.attr('value') || rangePicker.val();
+            }
+        }
 
         $.find(`input[name="flags.advanced-drawing-tools.textStyle.strokeThickness"]`).attr(
             "placeholder",
@@ -525,10 +679,19 @@ Hooks.on("renderDrawingConfig", (app, root, data) => {
 
     updateStrokeThicknessPlaceholder();
 
+    // Add change listener for both input and range-picker elements
     $.find(`input[name="fontSize"]`).change(event => updateStrokeThicknessPlaceholder(event));
+    $.find(`range-picker[name="fontSize"]`).change(event => updateStrokeThicknessPlaceholder(event));
 
     const updateDropShadowBlurPlaceholder = () => {
-        const fontSize = $.find(`input[name="fontSize"]`).val();
+        // Try to get fontSize from input first, then range-picker
+        let fontSize = $.find(`input[name="fontSize"]`).val();
+        if (!fontSize) {
+            const rangePicker = $.find(`range-picker[name="fontSize"]`);
+            if (rangePicker.length > 0) {
+                fontSize = rangePicker.attr('value') || rangePicker.val();
+            }
+        }
 
         $.find(`input[name="flags.advanced-drawing-tools.textStyle.dropShadowBlur"]`).attr(
             "placeholder",
@@ -538,19 +701,57 @@ Hooks.on("renderDrawingConfig", (app, root, data) => {
 
     updateDropShadowBlurPlaceholder();
 
+    // Add change listener for both input and range-picker elements
     $.find(`input[name="fontSize"]`).change(event => updateDropShadowBlurPlaceholder(event));
+    $.find(`range-picker[name="fontSize"]`).change(event => updateDropShadowBlurPlaceholder(event));
 
-    // Safely set height properties with defensive checks
+    // Safely set height properties with defensive checks to enable scrolling
     try {
+        // Calculate a reasonable max height based on screen size
+        const maxHeight = Math.min(window.innerHeight * 0.9, 750);
+        
         if (app.options && typeof app.options === 'object') {
             if (Object.isExtensible(app.options)) {
                 app.options.height = "auto";
+                app.options.maxHeight = maxHeight;
+                app.options.resizable = true;
+                // V13 specific scrolling options
+                if (app.options.scrollY !== undefined) {
+                    app.options.scrollY = [".window-content"];
+                }
             }
         }
         
         if (app.position && typeof app.position === 'object') {
             if (Object.isExtensible(app.position)) {
                 app.position.height = "auto";
+                app.position.maxHeight = maxHeight;
+            }
+        }
+        
+        // Add a CSS class to identify this as a scrollable config window
+        const rootElement = root?.jquery ? root[0] : (root instanceof HTMLElement ? root : null);
+        if (rootElement) {
+            // Try multiple approaches to find the app element
+            let appElement = rootElement.closest('.app') || 
+                           rootElement.closest('.application') ||
+                           rootElement.querySelector('.app') ||
+                           rootElement;
+            
+            // For V13 and different systems, try to find the drawing config specifically
+            if (!appElement.classList.contains('drawing-config')) {
+                const drawingConfigElement = rootElement.closest('.drawing-config') ||
+                                           rootElement.querySelector('.drawing-config');
+                if (drawingConfigElement) {
+                    appElement = drawingConfigElement;
+                }
+            }
+            
+            if (appElement && appElement.classList) {
+                appElement.classList.add(`${MODULE_ID}-scrollable-config`);
+                
+                // Also add a data attribute for additional targeting if needed
+                appElement.setAttribute('data-advanced-drawing-tools-scrollable', 'true');
             }
         }
         
