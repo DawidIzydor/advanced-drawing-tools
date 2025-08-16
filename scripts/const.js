@@ -30,6 +30,7 @@ export const DEFAULT_FLAGS = Object.freeze({
     [`flags.${MODULE_ID}.textStyle.fontWeight`]: "normal",
     [`flags.${MODULE_ID}.textStyle.leading`]: 0,
     [`flags.${MODULE_ID}.textStyle.letterSpacing`]: 0,
+    [`flags.${MODULE_ID}.textStyle.lineHeight`]: null,
     [`flags.${MODULE_ID}.textStyle.stroke`]: null,
     [`flags.${MODULE_ID}.textStyle.strokeThickness`]: null,
     [`flags.${MODULE_ID}.textStyle.wordWrapWidth`]: "100%"

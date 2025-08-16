@@ -36,6 +36,7 @@ Hooks.on("refreshDrawing", drawing => {
         fontWeight: ts?.fontWeight || "normal",
         leading: ts?.leading ?? 0,
         letterSpacing: ts?.letterSpacing ?? 0,
+        lineHeight: ts?.lineHeight ?? Math.round((ts?.fontSize ?? document.fontSize ?? 16) * 1.2),
         lineJoin: "round",
         stroke: ts?.stroke || (Color.from(document.textColor || "#ffffff").hsv[2] > 0.6 ? 0x000000 : 0xFFFFFF),
         strokeThickness: ts?.strokeThickness ?? Math.max(Math.round(document.fontSize / 32), 2),

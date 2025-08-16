@@ -470,6 +470,10 @@ Hooks.on("renderDrawingConfig", (app, root, data) => {
             <input type="number" name="flags.${MODULE_ID}.textStyle.letterSpacing" min="0" step="0.1" placeholder="0" value="${ts.letterSpacing ?? "0"}">
         </div>
         <div class="form-group">
+            <label>Line Height <span class="units">(Pixels)</span></label>
+            <input type="number" name="flags.${MODULE_ID}.textStyle.lineHeight" min="0" step="0.1" placeholder="normal" value="${ts.lineHeight ?? "normal"}">
+        </div> 
+        <div class="form-group">
             <label>Word Wrap Width <span class="units">(Pixels or %)</span></label>
             <input type="text" name="flags.${MODULE_ID}.textStyle.wordWrapWidth" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="100%" value="${stringifyValue(ts.wordWrapWidth) ?? "100%"}">
         </div>
