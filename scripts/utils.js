@@ -45,6 +45,21 @@ export function calculateValue(value, base) {
     return value;
 }
 
+export function hexToRgba(hex, opacity = 1) {
+    let c = hex.replace(/^#/, "");
+
+    if (c.length === 3) {
+        c = c.split("").map(ch => ch + ch).join("");
+    }
+
+    const num = parseInt(c, 16);
+    const r = (num >> 16) & 255;
+    const g = (num >> 8) & 255;
+    const b = num & 255;
+
+    return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+}
+
 export function stringifyValue(value) {
     value = parseValue(value);
 

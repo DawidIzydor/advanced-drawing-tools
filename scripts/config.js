@@ -611,6 +611,15 @@ Hooks.on("renderDrawingConfig", (app, root, data) => {
             <input type="number" name="flags.${MODULE_ID}.textStyle.strokeThickness" min="0" step="0.1" placeholder="Default" value="${ts.strokeThickness ?? ""}">
         </div>
         <div class="form-group">
+            <label>Stroke Opacity</label>
+            <div class="form-fields">
+                <range-picker name="flags.${MODULE_ID}.textStyle.strokeOpacity" value="${ts.strokeOpacity ?? "1"}" min="0" max="1" step="0.1">
+                    <input type="range" min="0" max="1" step="0.1" style="">
+                    <input type="number" min="0" max="1" step="0.1"}">
+                </range-picker>
+            </div>
+        </div>
+        <div class="form-group">
             <label>Drop Shadow</label>
             <input type="checkbox" name="flags.${MODULE_ID}.textStyle.dropShadow" ${(ts.dropShadow ?? true) ? "checked" : ""}>
         </div>
