@@ -231,16 +231,16 @@ Hooks.on("renderDrawingConfig", (app, root, data) => {
             /* Target the actual form content containers */
             .app.drawing-config .sheet-body,
             .app.drawing-config .form-body,
-            .app.drawing-config .window-content,
+            .app.drawing-config .tab,
             .app.sheet.drawing-config .sheet-body,
             .app.sheet.drawing-config .form-body,
-            .app.sheet.drawing-config .window-content,
+            .app.sheet.drawing-config .tab,
             .app.${MODULE_ID}-scrollable-config .sheet-body,
             .app.${MODULE_ID}-scrollable-config .form-body,
-            .app.${MODULE_ID}-scrollable-config .window-content,
+            .app.${MODULE_ID}-scrollable-config .tab,
             [data-advanced-drawing-tools-scrollable="true"] .sheet-body,
             [data-advanced-drawing-tools-scrollable="true"] .form-body,
-            [data-advanced-drawing-tools-scrollable="true"] .window-content {
+            [data-advanced-drawing-tools-scrollable="true"] .tab {
                 max-height: ${Math.min(window.innerHeight * 0.8, 650)}px;
                 overflow-y: auto;
                 overflow-x: hidden;
@@ -250,51 +250,51 @@ Hooks.on("renderDrawingConfig", (app, root, data) => {
             /* Scrollbar styling for all targeted containers */
             .app.drawing-config .sheet-body::-webkit-scrollbar,
             .app.drawing-config .form-body::-webkit-scrollbar,
-            .app.drawing-config .window-content::-webkit-scrollbar,
+            .app.drawing-config .tab::-webkit-scrollbar,
             .app.sheet.drawing-config .sheet-body::-webkit-scrollbar,
             .app.sheet.drawing-config .form-body::-webkit-scrollbar,
-            .app.sheet.drawing-config .window-content::-webkit-scrollbar,
+            .app.sheet.drawing-config .tab::-webkit-scrollbar,
             .app.${MODULE_ID}-scrollable-config .sheet-body::-webkit-scrollbar,
             .app.${MODULE_ID}-scrollable-config .form-body::-webkit-scrollbar,
-            .app.${MODULE_ID}-scrollable-config .window-content::-webkit-scrollbar {
+            .app.${MODULE_ID}-scrollable-config .tab::-webkit-scrollbar {
                 width: 8px;
             }
             
             .app.drawing-config .sheet-body::-webkit-scrollbar-track,
             .app.drawing-config .form-body::-webkit-scrollbar-track,
-            .app.drawing-config .window-content::-webkit-scrollbar-track,
+            .app.drawing-config .tab::-webkit-scrollbar-track,
             .app.sheet.drawing-config .sheet-body::-webkit-scrollbar-track,
             .app.sheet.drawing-config .form-body::-webkit-scrollbar-track,
-            .app.sheet.drawing-config .window-content::-webkit-scrollbar-track,
+            .app.sheet.drawing-config .tab::-webkit-scrollbar-track,
             .app.${MODULE_ID}-scrollable-config .sheet-body::-webkit-scrollbar-track,
             .app.${MODULE_ID}-scrollable-config .form-body::-webkit-scrollbar-track,
-            .app.${MODULE_ID}-scrollable-config .window-content::-webkit-scrollbar-track {
+            .app.${MODULE_ID}-scrollable-config .tab::-webkit-scrollbar-track {
                 background: var(--color-border-light-tertiary, #ccc);
                 border-radius: 4px;
             }
             
             .app.drawing-config .sheet-body::-webkit-scrollbar-thumb,
             .app.drawing-config .form-body::-webkit-scrollbar-thumb,
-            .app.drawing-config .window-content::-webkit-scrollbar-thumb,
+            .app.drawing-config .tab::-webkit-scrollbar-thumb,
             .app.sheet.drawing-config .sheet-body::-webkit-scrollbar-thumb,
             .app.sheet.drawing-config .form-body::-webkit-scrollbar-thumb,
-            .app.sheet.drawing-config .window-content::-webkit-scrollbar-thumb,
+            .app.sheet.drawing-config .tab::-webkit-scrollbar-thumb,
             .app.${MODULE_ID}-scrollable-config .sheet-body::-webkit-scrollbar-thumb,
             .app.${MODULE_ID}-scrollable-config .form-body::-webkit-scrollbar-thumb,
-            .app.${MODULE_ID}-scrollable-config .window-content::-webkit-scrollbar-thumb {
+            .app.${MODULE_ID}-scrollable-config .tab::-webkit-scrollbar-thumb {
                 background: var(--color-border-dark, #666);
                 border-radius: 4px;
             }
             
             .app.drawing-config .sheet-body::-webkit-scrollbar-thumb:hover,
             .app.drawing-config .form-body::-webkit-scrollbar-thumb:hover,
-            .app.drawing-config .window-content::-webkit-scrollbar-thumb:hover,
+            .app.drawing-config .tab::-webkit-scrollbar-thumb:hover,
             .app.sheet.drawing-config .sheet-body::-webkit-scrollbar-thumb:hover,
             .app.sheet.drawing-config .form-body::-webkit-scrollbar-thumb:hover,
-            .app.sheet.drawing-config .window-content::-webkit-scrollbar-thumb:hover,
+            .app.sheet.drawing-config .tab::-webkit-scrollbar-thumb:hover,
             .app.${MODULE_ID}-scrollable-config .sheet-body::-webkit-scrollbar-thumb:hover,
             .app.${MODULE_ID}-scrollable-config .form-body::-webkit-scrollbar-thumb:hover,
-            .app.${MODULE_ID}-scrollable-config .window-content::-webkit-scrollbar-thumb:hover {
+            .app.${MODULE_ID}-scrollable-config .tab::-webkit-scrollbar-thumb:hover {
                 background: var(--color-border-dark-primary, #333);
             }
             
