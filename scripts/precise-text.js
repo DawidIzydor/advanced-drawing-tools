@@ -25,7 +25,8 @@ foundry.canvas.containers.PreciseText.prototype.updateText = function (respectDi
 
     if (!respectDirty || this.dirty || this.localStyleID !== style.styleID) {
         const measured = PIXI.TextMetrics.measureText(this._text || " ", style, style.wordWrap, this.canvas);
-        const size = Math.ceil(Math.max(measured.width, measured.height, 1) + style.padding * 2);
+        const lineHeight = (style.lineHeight === "normal" || style.lineHeight === null) ? style.fontSize * 1.2 : style.lineHeight;
+        const size = Math.ceil(Math.max(measured.width, measured.height, lineHeight ?? 1, 1) + style.padding * 2);
         const maxSize = foundry.canvas.containers.PreciseText._MAX_TEXTURE_SIZE ?? 4096;
         const maxZoom = foundry.canvas.containers.PreciseText._MAX_ZOOM ?? 3;
         const maxResolution = foundry.canvas.containers.PreciseText._MAX_RESOLUTION ?? 2;

@@ -1,6 +1,7 @@
 import { MODULE_ID } from "./const.js";
 import { WarpedText } from "./warped-text.js";
 import { calculateValue } from "./utils.js";
+import { hexToRgba } from "./utils.js";
 
 Hooks.on("refreshDrawing", drawing => {
     const text = drawing.text;
@@ -36,8 +37,9 @@ Hooks.on("refreshDrawing", drawing => {
         fontWeight: ts?.fontWeight || "normal",
         leading: ts?.leading ?? 0,
         letterSpacing: ts?.letterSpacing ?? 0,
+        lineHeight: ts?.lineHeight ?? Math.round((ts?.fontSize ?? document.fontSize ?? 16) * 1.2),
         lineJoin: "round",
-        stroke: ts?.stroke || (Color.from(document.textColor || "#ffffff").hsv[2] > 0.6 ? 0x000000 : 0xFFFFFF),
+        stroke: hexToRgba(ts?.stroke || (Color.from(document.textColor || "#ffffff").hsv[2] > 0.6 ? "#000000" : "#FFFFFF"), ts?.strokeOpacity ?? 1),
         strokeThickness: ts?.strokeThickness ?? Math.max(Math.round(document.fontSize / 32), 2),
         wordWrapWidth: calculateValue(ts?.wordWrapWidth, document.shape.width) ?? document.shape.width
     });
