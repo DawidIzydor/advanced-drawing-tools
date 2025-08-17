@@ -645,8 +645,10 @@ Hooks.on("renderDrawingConfig", (app, root, data) => {
         <div class="form-group">
             <label>Drop Shadow Alpha</label>
             <div class="form-fields">
-                <input type="range" name="flags.${MODULE_ID}.textStyle.dropShadowAlpha" min="0" max="1" step="0.1" value="${ts.dropShadowAlpha ?? "1"}">
-                <span class="range-value">${ts.dropShadowAlpha ?? "1"}</span>
+                <range-picker name="flags.${MODULE_ID}.textStyle.dropShadowAlpha" value="${ts.dropShadowAlpha ?? "1"}" min="0" max="1" step="0.1">
+                    <input type="range" min="0" max="1" step="0.1" style="">
+                    <input type="number" min="0" max="1" step="0.1"}">
+                </range-picker>
             </div>
         </div>
         <div class="form-group">
