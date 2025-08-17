@@ -602,8 +602,10 @@ Hooks.on("renderDrawingConfig", (app, root, data) => {
         <div class="form-group">
             <label>Stroke Color</label>
             <div class="form-fields">
-                <input class="color" type="text" name="flags.${MODULE_ID}.textStyle.stroke" placeholder="" value="${ts.stroke || ""}">
-                <input type="color" value="${ts.stroke || "#000000"}" data-edit="flags.${MODULE_ID}.textStyle.stroke">
+                <color-picker name="flags.${MODULE_ID}.textStyle.stroke" placeholder="" value="${ts.stroke || ""}">
+                    <input type="text" placeholder="">
+                    <input type="color" style="">
+                </color-picker>
             </div>
         </div>
         <div class="form-group">
@@ -638,8 +640,10 @@ Hooks.on("renderDrawingConfig", (app, root, data) => {
         <div class="form-group">
             <label>Drop Shadow Color</label>
             <div class="form-fields">
-                <input class="color" type="text" name="flags.${MODULE_ID}.textStyle.dropShadowColor" placeholder="#000000" value="${ts.dropShadowColor || "#000000"}">
-                <input type="color" value="${ts.dropShadowColor || "#000000"}" data-edit="flags.${MODULE_ID}.textStyle.dropShadowColor">
+                <color-picker name="flags.${MODULE_ID}.textStyle.dropShadowColor" placeholder="#000000" value="${ts.dropShadowColor || "#000000"}">
+                    <input type="text" placeholder="#000000">
+                    <input type="color" style="">
+                </color-picker>
             </div>
         </div>
         <div class="form-group">
