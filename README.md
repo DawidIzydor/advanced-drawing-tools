@@ -1,7 +1,7 @@
-[![Latest Version](https://img.shields.io/github/v/release/dev7355608/advanced-drawing-tools?display_name=tag&sort=semver&label=Latest%20Version)](https://github.com/dev7355608/advanced-drawing-tools/releases/latest)
-![Foundry Version](https://img.shields.io/endpoint?url=https://foundryshields.com/version?url=https%3A%2F%2Fraw.githubusercontent.com%2Fdev7355608%2Fadvanced-drawing-tools%2Fmain%2Fmodule.json)
+[![Latest Version](https://img.shields.io/github/v/release/DawidIzydor/advanced-drawing-tools?display_name=tag&sort=semver&label=Latest%20Version)](https://github.com/DawidIzydor/advanced-drawing-tools/releases/latest)
+![Foundry Version](https://img.shields.io/endpoint?url=https://foundryshields.com/version?url=https%3A%2F%2Fraw.githubusercontent.com%2FDawidIzydor%2Fadvanced-drawing-tools%2Fmain%2Fmodule.json)
 [![Forge Installs](https://img.shields.io/badge/dynamic/json?label=Forge%20Installs&query=package.installs&suffix=%25&url=https%3A%2F%2Fforge-vtt.com%2Fapi%2Fbazaar%2Fpackage%2Fadvanced-drawing-tools&colorB=blueviolet)](https://forge-vtt.com/bazaar#package=advanced-drawing-tools)
-[![License](https://img.shields.io/github/license/dev7355608/advanced-drawing-tools?label=License)](LICENSE)
+[![License](https://img.shields.io/github/license/DawidIzydor/advanced-drawing-tools?label=License)](LICENSE)
 
 # Advanced Drawing Tools (Foundry VTT Module)
 
