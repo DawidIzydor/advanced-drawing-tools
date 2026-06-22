@@ -45,8 +45,8 @@ Hooks.once("libWrapper.Ready", () => {
             });
         }, libWrapper.OVERRIDE);
     } else {
-        Drawing.prototype._rescaleDimensions = function (original, dx, dy) {
-            return Drawing.rescaleDimensions(original, dx, dy);
+        foundry.canvas.placeables.Drawing.prototype._rescaleDimensions = function (original, dx, dy) {
+            return foundry.canvas.placeables.Drawing.rescaleDimensions(original, dx, dy);
         };
     }
 });

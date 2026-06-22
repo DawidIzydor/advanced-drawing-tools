@@ -1,6 +1,6 @@
 import { MODULE_NAME } from "./const.js";
 
-Drawing.prototype._convertToPolygon = async function ({ confirm = false } = {}) {
+foundry.canvas.placeables.Drawing.prototype._convertToPolygon = async function ({ confirm = false } = {}) {
     if (this.document.shape.type === "p") {
         return;
     }

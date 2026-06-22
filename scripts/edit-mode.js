@@ -173,10 +173,6 @@ Hooks.once("libWrapper.Ready", () => {
         return this.document.update(update, { diff: false });
     }, libWrapper.MIXED);
 
-    if (foundry.utils.isNewerVersion(game.version, 12)) {
-        libWrapper.register(MODULE_ID, "Drawing.prototype._onClickLeft", function (wrapped, event) {
-            this._editHandle = null;
-
     tryRegister(`foundry.canvas.placeables.Drawing.prototype._onClickLeft`, function (wrapped, event) {
         this._editHandle = null;
 
@@ -250,9 +246,9 @@ Hooks.once("libWrapper.Ready", () => {
     
 });
 
-Drawing.prototype._editMode = false;
+foundry.canvas.placeables.Drawing.prototype._editMode = false;
 
-Drawing.prototype._toggleEditMode = function (active) {
+foundry.canvas.placeables.Drawing.prototype._toggleEditMode = function (active) {
     this.layer.placeables.forEach(drawing => {
         if (drawing !== this && drawing._editMode) {
             drawing._editMode = false;
@@ -275,10 +271,10 @@ Drawing.prototype._toggleEditMode = function (active) {
 (() => foundry.canvas?.placeables?.Drawing)().prototype._editHandles = null;
 (() => foundry.canvas?.placeables?.Drawing)().prototype._hoveredEditHandle = null;
 
-Drawing.prototype._refreshEditMode = function () {
+foundry.canvas.placeables.Drawing.prototype._refreshEditMode = function () {
     const document = this.document;
 
-    if (this._editMode && this.layer.active && !document._source.locked && document.shape.type === "p") {
+    if (this._editMode && !document.locked && document.shape.type === (CONST.DRAWING_SHAPES?.POLYGON ?? "p")) {
         let editHandles = this._editHandles;
 
         if (!editHandles || editHandles.destroyed) {

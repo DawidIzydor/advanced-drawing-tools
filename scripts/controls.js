@@ -1,14 +1,16 @@
 import { MODULE_ID } from "./const.js";
 
 Hooks.on("getSceneControlButtons", controls => {
-    const drawingsControl = controls.find(c => c.name === "drawings");
+    const drawingsControl = controls["drawings"];
 
-    drawingsControl?.tools.splice(drawingsControl.tools.findIndex(t => t.name === "clear"), 0, {
-        name: `${MODULE_ID}.snap`,
-        title: "CONTROLS.WallSnap",
-        icon: "fas fa-plus",
-        toggle: true,
-        active: canvas.drawings?._forceSnap || false,
-        onClick: toggled => canvas.drawings._forceSnap = toggled
-    });
+    if (drawingsControl) {
+        drawingsControl.tools[`${MODULE_ID}.snap`] = {
+            name: `${MODULE_ID}.snap`,
+            title: "CONTROLS.WallSnap",
+            icon: "fas fa-plus",
+            toggle: true,
+            active: canvas.drawings?._forceSnap || false,
+            onChange: toggled => canvas.drawings._forceSnap = toggled
+        };
+    }
 });
