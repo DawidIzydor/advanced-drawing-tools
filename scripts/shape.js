@@ -50,19 +50,22 @@ Hooks.on("refreshDrawing", drawing => {
 
         if (texture && fs) {
             const transform = fs?.transform;
-            let scaleW = calculateValue(fs?.texture?.width, document.shape.width) / texture.width;
+
+            // Compute the tile scale from the desired pixel/percent size.
+            // If only one axis is specified, mirror it to the other so the texture isn't distorted.
+            let scaleW = calculateValue(fs?.texture?.width,  document.shape.width)  / texture.width;
             let scaleH = calculateValue(fs?.texture?.height, document.shape.height) / texture.height;
+            scaleW = scaleW || scaleH || 1;
+            scaleH = scaleH || scaleW || 1;
 
-            [scaleW, scaleH] = [scaleW || scaleH || 1, scaleH || scaleW || 1];
-
-            const width = scaleW * texture.width;
-            const height = scaleH * texture.height;
+            const tileW = scaleW * texture.width;
+            const tileH = scaleH * texture.height;
 
             const matrix = new PIXI.Matrix().setTransform(
-                calculateValue(transform?.position?.x, width) ?? 0,
-                calculateValue(transform?.position?.y, height) ?? 0,
-                calculateValue(transform?.pivot?.x, width) ?? 0,
-                calculateValue(transform?.pivot?.y, height) ?? 0,
+                calculateValue(transform?.position?.x, tileW) ?? 0,
+                calculateValue(transform?.position?.y, tileH) ?? 0,
+                calculateValue(transform?.pivot?.x,    tileW) ?? 0,
+                calculateValue(transform?.pivot?.y,    tileH) ?? 0,
                 transform?.scale?.x ?? 1,
                 transform?.scale?.y ?? 1,
                 (transform?.rotation ?? 0) / 180 * Math.PI,
@@ -81,12 +84,12 @@ Hooks.on("refreshDrawing", drawing => {
 
 function drawDashedPolygon(g, points, dash, gap, lineWidth, color, alpha, closed) {
     const n = points.length / 2;
-    const segs = closed ? n : n - 1;
+    const segmentCount = closed ? n : n - 1;
 
     let dashRemain = dash;
     let isDash = true;
 
-    for (let i = 0; i < segs; i++) {
+    for (let i = 0; i < segmentCount; i++) {
         const ax = points[i * 2];
         const ay = points[i * 2 + 1];
         const bx = points[((i + 1) % n) * 2];

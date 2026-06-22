@@ -1,5 +1,10 @@
 import { DEFAULT_FLAGS, MODULE_ID } from "./const.js";
 
+// Returns true for our module's own flag keys, excluding deletion-key entries like ".-=foo"
+function isModuleFlag(key) {
+    return key.startsWith(`flags.${MODULE_ID}.`) && !key.includes(".-=");
+}
+
 export function parseValue(value) {
     if (value == null) {
         return null;
@@ -34,15 +39,11 @@ export function calculateValue(value, base) {
         return null;
     }
 
-    const unit = value.unit;
-
-    value = value.value;
-
-    if (unit === "%") {
-        return base * (value / 100);
+    if (value.unit === "%") {
+        return base * (value.value / 100);
     }
 
-    return value;
+    return value.value;
 }
 
 export function stringifyValue(value) {
@@ -52,15 +53,11 @@ export function stringifyValue(value) {
         return null;
     }
 
-    const unit = value.unit;
-
-    value = value.value;
-
-    if (unit === "%") {
-        return `${value}%`;
+    if (value.unit === "%") {
+        return `${value.value}%`;
     }
 
-    return `${value}px`;
+    return `${value.value}px`;
 }
 
 export function saveValue(value) {
@@ -70,12 +67,23 @@ export function saveValue(value) {
         return null;
     }
 
-    const unit = value.unit;
+    // Percent values are stored as strings ("50%"); plain pixel values are stored as numbers.
+    if (value.unit === "%") {
+        return `${value.value}%`;
+    }
 
-    value = value.value;
+    return value.value;
+}
 
-    if (unit === "%") {
-        return `${value}%`;
+// Normalize a single flag value to a consistent type for storage.
+// Strings are lowercased and trimmed; values that look like CSS lengths are saved via saveValue.
+function normalizeFlag(value, defaultValue) {
+    value = value ?? null;
+
+    if (parseValue(defaultValue)) {
+        value = saveValue(value);
+    } else if (typeof value === "string") {
+        value = value ? value.trim().toLowerCase() : null;
     }
 
     return value;
@@ -85,98 +93,90 @@ export function cleanData(data, { inplace = false, deletionKeys = false, keepOth
     const flatData = foundry.utils.flattenObject(data);
     let newData = {};
 
+    // Phase 1: Seed deletion keys so Foundry will remove any flag that is not explicitly re-set
+    // below. In a partial update we only delete paths present in the incoming data, not every
+    // known default flag.
     if (deletionKeys || inplace) {
-        for (const key of (partial ? [] : Object.keys(DEFAULT_FLAGS)).concat(Object.keys(flatData))) {
-            if (!(key.startsWith(`flags.${MODULE_ID}.`) && !key.includes(".-="))) {
-                continue;
-            }
+        const keysToErase = (partial ? [] : Object.keys(DEFAULT_FLAGS)).concat(Object.keys(flatData));
 
-            const split = key.split(".");
+        for (const key of keysToErase) {
+            if (!isModuleFlag(key)) continue;
 
-            for (let i = partial ? split.length - 1 : 1; i < split.length; i++) {
-                newData[`${split.slice(0, i).join(".")}.-=${split[i]}`] = null;
+            const pathParts = key.split(".");
+            // For partial updates only add the leaf's immediate parent deletion key;
+            // for full updates add a deletion key at every ancestor level.
+            const startDepth = partial ? pathParts.length - 1 : 1;
+
+            for (let i = startDepth; i < pathParts.length; i++) {
+                newData[`${pathParts.slice(0, i).join(".")}.-=${pathParts[i]}`] = null;
             }
         }
     }
 
+    // Phase 2: Normalize each flag value and copy it into newData.
+    // When a non-default value is stored, remove its ancestor deletion keys so Foundry
+    // does not accidentally delete the parent object that now contains the value.
     for (let [key, value] of Object.entries(flatData)) {
-        if (!(key.startsWith(`flags.${MODULE_ID}.`) && !key.includes(".-="))) {
-            if (keepOthers && !inplace) {
-                newData[key] = value;
-            }
-
+        if (!isModuleFlag(key)) {
+            if (keepOthers && !inplace) newData[key] = value;
             continue;
         }
 
-        if (!(key in DEFAULT_FLAGS)) {
-            continue;
-        }
+        if (!(key in DEFAULT_FLAGS)) continue;
 
         const defaultValue = DEFAULT_FLAGS[key];
-        const normalizeValue = value => {
-            value = value ?? null;
 
-            if (parseValue(defaultValue)) {
-                value = saveValue(value);
-            } else if (typeof value === "string") {
-                if (!value) {
-                    value = null;
-                } else {
-                    value = value.trim().toLowerCase();
-                }
-            }
-
-            return value;
-        };
-
-        if (value instanceof Array) {
-            value = value.map(normalizeValue);
+        if (Array.isArray(value)) {
+            value = value.map(item => normalizeFlag(item, defaultValue));
         } else {
-            value = normalizeValue(value);
+            value = normalizeFlag(value, defaultValue);
         }
 
-        if (value != null && value !== defaultValue && !value.equals?.(defaultValue)) {
+        const isDefaultValue = value == null || value === defaultValue || value.equals?.(defaultValue);
+
+        if (!isDefaultValue) {
             newData[key] = value;
 
+            // Cancel the deletion keys for this path — the value is being set, not erased.
             if (deletionKeys || inplace) {
-                const split = key.split(".");
-
-                for (let i = 1; i < split.length; i++) {
-                    delete newData[`${split.slice(0, i).join(".")}.-=${split[i]}`];
+                const pathParts = key.split(".");
+                for (let i = 1; i < pathParts.length; i++) {
+                    delete newData[`${pathParts.slice(0, i).join(".")}.-=${pathParts[i]}`];
                 }
             }
         } else if (!deletionKeys) {
+            // Not using deletion-key mode: write the default explicitly so the consumer
+            // always receives a complete, predictable data set.
             newData[key] = foundry.utils.deepClone(defaultValue);
         }
     }
 
+    // Phase 3: Remove child entries made redundant by a parent deletion key.
+    // e.g. if we have "-=fillStyle" there is no need to also carry "-=fillStyle.texture.width".
     if (deletionKeys || inplace) {
         for (const key in newData) {
-            if (!key.startsWith(`flags.${MODULE_ID}.`) && !key.startsWith(`flags.-=${MODULE_ID}`)) {
-                continue;
-            }
+            if (!key.startsWith(`flags.${MODULE_ID}.`) && !key.startsWith(`flags.-=${MODULE_ID}`)) continue;
 
-            const split = key.split(".");
+            const pathParts = key.split(".");
+            if (!pathParts[pathParts.length - 1].startsWith("-=")) continue;
 
-            if (!split[split.length - 1].startsWith("-=")) {
-                continue;
-            }
+            const deletedSegment = pathParts[pathParts.length - 1].slice(2); // strip the "-="
+            const parentPath = pathParts.slice(0, pathParts.length - 1).join(".");
+            const childPrefix = `${parentPath}.${deletedSegment}.`;
 
-            const prefix = `${split.slice(0, split.length - 1).join(".")}.${split[split.length - 1].slice(2)}.`;
-
-            delete newData[prefix.slice(0, prefix.length - 1)];
+            delete newData[`${parentPath}.${deletedSegment}`];
 
             for (const otherKey in newData) {
-                if (!otherKey.startsWith(prefix)) {
-                    continue;
-                }
-
-                delete newData[otherKey];
+                if (otherKey.startsWith(childPrefix)) delete newData[otherKey];
             }
         }
     }
 
-    newData = foundry.utils.expandObject(Object.fromEntries(Object.entries(newData).sort((a, b) => b[0].length - a[0].length)));
+    // Phase 4: Expand the flat key map back to a nested object.
+    // Sorting longer keys first ensures children are processed before parents during expansion.
+    newData = foundry.utils.expandObject(
+        Object.fromEntries(Object.entries(newData).sort((a, b) => b[0].length - a[0].length))
+    );
 
     if (!inplace) {
         return newData;

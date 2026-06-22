@@ -6,7 +6,6 @@ Hooks.once("libWrapper.Ready", () => {
     libWrapper.register(MODULE_ID, "foundry.applications.api.DocumentSheetV2.prototype._prepareSubmitData",
 
     function (wrapped, event, form, formData, updateData) {
-        // 1) Start with the prepared data from the base sheet
         const data = wrapped(event, form, formData, updateData);
 
         if (this.form.querySelector(`input[class="${MODULE_ID}--lineStyle-dash"]`).checked) {
@@ -18,44 +17,40 @@ Hooks.once("libWrapper.Ready", () => {
             data[`flags.${MODULE_ID}.lineStyle.dash`] = null;
         }
 
-        const processValue = name => {
+        // Save CSS-length fields (px / %) back to their stored format.
+        for (const name of [
+            `flags.${MODULE_ID}.fillStyle.texture.width`,
+            `flags.${MODULE_ID}.fillStyle.texture.height`,
+            `flags.${MODULE_ID}.fillStyle.transform.position.x`,
+            `flags.${MODULE_ID}.fillStyle.transform.position.y`,
+            `flags.${MODULE_ID}.fillStyle.transform.pivot.x`,
+            `flags.${MODULE_ID}.fillStyle.transform.pivot.y`,
+            `flags.${MODULE_ID}.textStyle.wordWrapWidth`,
+        ]) {
             data[name] = saveValue(data[name]);
-        };
+        }
 
-        processValue(`flags.${MODULE_ID}.fillStyle.texture.width`);
-        processValue(`flags.${MODULE_ID}.fillStyle.texture.height`);
-        processValue(`flags.${MODULE_ID}.fillStyle.transform.position.x`);
-        processValue(`flags.${MODULE_ID}.fillStyle.transform.position.y`);
-        processValue(`flags.${MODULE_ID}.fillStyle.transform.pivot.x`);
-        processValue(`flags.${MODULE_ID}.fillStyle.transform.pivot.y`);
-        processValue(`flags.${MODULE_ID}.textStyle.wordWrapWidth`);
-
-        const processStringArray = name => {
+        // Ensure color-array fields are always arrays (a single value arrives as a scalar).
+        const coerceToStringArray = name => {
             if (data[name] == null) {
                 data[name] = [];
             } else if (!Array.isArray(data[name])) {
                 data[name] = [data[name]];
             }
-
-            if (data[name].every(v => !v)) {
-                data[name] = null;
-            }
+            if (data[name].every(v => !v)) data[name] = null;
         };
 
-        const processNumberArray = name => {
+        const coerceToNumberArray = name => {
             if (data[name] == null) {
                 data[name] = [];
             } else if (!Array.isArray(data[name])) {
                 data[name] = [data[name]];
             }
-
-            if (data[name].every(v => v === null)) {
-                data[name] = null;
-            }
+            if (data[name].every(v => v === null)) data[name] = null;
         };
 
-        processStringArray(`flags.${MODULE_ID}.textStyle.fill`);
-        processNumberArray(`flags.${MODULE_ID}.textStyle.fillGradientStops`);
+        coerceToStringArray(`flags.${MODULE_ID}.textStyle.fill`);
+        coerceToNumberArray(`flags.${MODULE_ID}.textStyle.fillGradientStops`);
 
         return data;
         }, libWrapper.WRAPPER);
@@ -208,8 +203,10 @@ Hooks.on("renderDrawingConfig", (app, html) => {
         <a title="Add Color" class="${MODULE_ID}--textStyle-fill--add" style="flex: 0;"><i class="fas fa-plus fa-fw" style="margin: 0;"></i></a>
         <a title="Remove Color" class="${MODULE_ID}--textStyle-fill--remove" style="flex: 0;"><i class="fas fa-minus fa-fw" style="margin: 0;"></i></a>
     `);
+
     html.find(`a[class="${MODULE_ID}--textStyle-fill--add"]`).click(event => {
-        html.find(`input[name="textColor"]`).closest(".form-group").after(createTextColor(
+        html.find(`input[name="textColor"]`).closest(".form-group").after(createTextColorRow(
+            app,
             html.find(`input[name="textColor"]`).val(),
             html.find(`input[name="flags.${MODULE_ID}.textStyle.fillGradientStops"]`).eq(0).val()
         ));
@@ -226,46 +223,12 @@ Hooks.on("renderDrawingConfig", (app, html) => {
         app.setPosition(app.position);
     });
 
-    const createTextColor = (fill, stop) => {
-        const group = $(`
-            <div class="form-group">
-                <label></label>
-                <div class="form-fields">
-                    <input class="color" type="text" name="flags.${MODULE_ID}.textStyle.fill" value="${fill || "#ffffff"}">
-                    <input type="color" data-edit="" value="${fill || "#ffffff"}">
-                    &nbsp;
-                    <input type="number" name="flags.${MODULE_ID}.textStyle.fillGradientStops" min="0" max="1" step="0.001" placeholder="" title="Color Stop" value="${stop ?? ""}">
-                    &nbsp;
-                    <a title="Add Color" style="flex: 0;"><i class="fas fa-plus fa-fw" style="margin: 0;"></i></a>
-                    <a title="Remove Color" style="flex: 0;"><i class="fas fa-minus fa-fw" style="margin: 0;"></i></a>
-                </div>
-            </div>
-        `);
-
-        group.find(`input[type="color"]`).change(event => {
-            group.find(`input[class="color"]`).val(event.target.value)
-        });
-        group.find(`a`).eq(0).click(event => {
-            $(event.target).closest(".form-group").after(createTextColor(
-                group.find(`input[class="color"]`).val(),
-                group.find(`input[name="flags.${MODULE_ID}.textStyle.fillGradientStops"]`).val()
-            ));
-            app.setPosition(app.position);
-        });
-        group.find(`a`).eq(1).click(event => {
-            $(event.target).closest(".form-group").remove();
-            app.setPosition(app.position);
-        });
-
-        return group;
-    }
-
     if (ts.fill) {
         const fill = Array.isArray(ts.fill) ? ts.fill : [ts.fill];
 
         for (let i = fill.length - 1; i >= 0; i--) {
             html.find(`input[name="textColor"]`).closest(".form-group").after(
-                createTextColor(fill[i], ts?.fillGradientStops?.[i + 1])
+                createTextColorRow(app, fill[i], ts?.fillGradientStops?.[i + 1])
             );
         }
     }
@@ -337,52 +300,69 @@ Hooks.on("renderDrawingConfig", (app, html) => {
         </div>
     `);
 
-    const updateStrokeColorPlaceholder = (event) => {
-        let textColor;
-
-        if (event?.target.type === "color") {
-            textColor = html.find(`input[data-edit="textColor"]`).val();
-        } else {
-            textColor = html.find(`input[name="textColor"]`).val();
-        }
+    // Keep the stroke-color placeholder in sync with the text color (dark text → white stroke, light text → black stroke).
+    const syncStrokeColorPlaceholder = (event) => {
+        const textColor = event?.target.type === "color"
+            ? html.find(`input[data-edit="textColor"]`).val()
+            : html.find(`input[name="textColor"]`).val();
 
         const strokeColor = Color.from(textColor || "#ffffff").hsv[2] > 0.6 ? "#000000" : "#ffffff";
-
         html.find(`input[name="flags.advanced-drawing-tools.textStyle.stroke"]`).attr("placeholder", strokeColor);
         html.find(`input[data-edit="flags.advanced-drawing-tools.textStyle.stroke"]`).val(strokeColor);
     };
 
-    updateStrokeColorPlaceholder();
-
-    html.find(`input[name="textColor"],input[data-edit="textColor"]`).change(event => updateStrokeColorPlaceholder(event));
-
-    const updateStrokeThicknessPlaceholder = () => {
+    // Keep font-size-derived placeholders in sync when fontSize changes.
+    const syncFontSizePlaceholders = () => {
         const fontSize = html.find(`input[name="fontSize"]`).val();
-
-        html.find(`input[name="flags.advanced-drawing-tools.textStyle.strokeThickness"]`).attr(
-            "placeholder",
-            Math.max(Math.round(fontSize / 32), 2)
-        );
+        html.find(`input[name="flags.advanced-drawing-tools.textStyle.strokeThickness"]`)
+            .attr("placeholder", Math.max(Math.round(fontSize / 32), 2));
+        html.find(`input[name="flags.advanced-drawing-tools.textStyle.dropShadowBlur"]`)
+            .attr("placeholder", Math.max(Math.round(fontSize / 16), 2));
     };
 
-    updateStrokeThicknessPlaceholder();
+    syncStrokeColorPlaceholder();
+    syncFontSizePlaceholders();
 
-    html.find(`input[name="fontSize"]`).change(event => updateStrokeThicknessPlaceholder(event));
-
-    const updateDropShadowBlurPlaceholder = () => {
-        const fontSize = html.find(`input[name="fontSize"]`).val();
-
-        html.find(`input[name="flags.advanced-drawing-tools.textStyle.dropShadowBlur"]`).attr(
-            "placeholder",
-            Math.max(Math.round(fontSize / 16), 2)
-        );
-    };
-
-    updateDropShadowBlurPlaceholder();
-
-    html.find(`input[name="fontSize"]`).change(event => updateDropShadowBlurPlaceholder(event));
+    html.find(`input[name="textColor"],input[data-edit="textColor"]`).change(syncStrokeColorPlaceholder);
+    html.find(`input[name="fontSize"]`).change(syncFontSizePlaceholders);
 
     app.options.height = "auto";
     app.position.height = "auto";
     app.setPosition(app.position);
 });
+
+// Builds a jQuery form-group for an additional text gradient color stop.
+function createTextColorRow(app, fill, stop) {
+    const group = $(`
+        <div class="form-group">
+            <label></label>
+            <div class="form-fields">
+                <input class="color" type="text" name="flags.${MODULE_ID}.textStyle.fill" value="${fill || "#ffffff"}">
+                <input type="color" data-edit="" value="${fill || "#ffffff"}">
+                &nbsp;
+                <input type="number" name="flags.${MODULE_ID}.textStyle.fillGradientStops" min="0" max="1" step="0.001" placeholder="" title="Color Stop" value="${stop ?? ""}">
+                &nbsp;
+                <a title="Add Color" style="flex: 0;"><i class="fas fa-plus fa-fw" style="margin: 0;"></i></a>
+                <a title="Remove Color" style="flex: 0;"><i class="fas fa-minus fa-fw" style="margin: 0;"></i></a>
+            </div>
+        </div>
+    `);
+
+    group.find(`input[type="color"]`).change(event => {
+        group.find(`input[class="color"]`).val(event.target.value);
+    });
+    group.find(`a`).eq(0).click(event => {
+        $(event.target).closest(".form-group").after(createTextColorRow(
+            app,
+            group.find(`input[class="color"]`).val(),
+            group.find(`input[name="flags.${MODULE_ID}.textStyle.fillGradientStops"]`).val()
+        ));
+        app.setPosition(app.position);
+    });
+    group.find(`a`).eq(1).click(event => {
+        $(event.target).closest(".form-group").remove();
+        app.setPosition(app.position);
+    });
+
+    return group;
+}

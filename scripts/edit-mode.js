@@ -5,24 +5,30 @@ Hooks.on("refreshDrawing", drawing => {
 });
 
 Hooks.once("libWrapper.Ready", () => {
+    // These adapters smooth over the event/interaction API differences between Foundry v11 and v12+.
     const getInteractionData = foundry.utils.isNewerVersion(game.version, 11)
         ? (event) => event.interactionData
         : (event) => event.data;
+
     const getOriginalData = foundry.utils.isNewerVersion(game.version, 11)
         ? (drawing, event) => event.interactionData.originalData
         : (drawing, event) => drawing._original;
-    const setOriginalData = foundry.utils.isNewerVersion(game.version, 11)
+
+    const saveOriginalData = foundry.utils.isNewerVersion(game.version, 11)
         ? (drawing, event) => event.interactionData.originalData = drawing.document.toObject()
         : (drawing, event) => drawing._original = drawing.document.toObject();
-    const setRestoreOriginalData = foundry.utils.isNewerVersion(game.version, 11)
-        ? (drawing, event, value) => event.interactionData.restoreOriginalData = value
-        : (drawing, event, value) => { };
+
+    const cancelOriginalDataRestore = foundry.utils.isNewerVersion(game.version, 11)
+        ? (drawing, event) => event.interactionData.restoreOriginalData = false
+        : (drawing, event) => { };
+
     const refreshSize = foundry.utils.isNewerVersion(game.version, 12)
         ? (drawing) => drawing.renderFlags.set({ refreshSize: true })
         : foundry.utils.isNewerVersion(game.version, 11)
             ? (drawing) => drawing.renderFlags.set({ refreshShape: true })
             : (drawing) => drawing.refresh();
-    const isDraggingHandle = foundry.utils.isNewerVersion(game.version, 12)
+
+    const isHandleDrag = foundry.utils.isNewerVersion(game.version, 12)
         ? (drawing, event) => event.interactionData.dragHandle
         : (drawing, event) => drawing._dragHandle;
 
@@ -47,11 +53,11 @@ Hooks.once("libWrapper.Ready", () => {
     // _onHandleDragStart logic moved into _onClickLeft below.
 
     tryRegister(`foundry.canvas.placeables.Drawing.prototype._onDragLeftStart`, function (wrapped, event) {
-        if (!isDraggingHandle(this, event)) {
+        if (!isHandleDrag(this, event)) {
             return wrapped(event);
         }
 
-        setOriginalData(this, event);
+        saveOriginalData(this, event);
 
         let { handle, destination } = getInteractionData(event);
 
@@ -59,28 +65,18 @@ Hooks.once("libWrapper.Ready", () => {
             handle = this._editHandle;
         }
 
-        let update;
-
+        // Only EdgeHandle insertions need upfront document mutations; PointHandle drags work
+        // with the original data and update during move.
         if (handle instanceof EdgeHandle) {
-            const point = new PIXI.Point(destination.x, destination.y);
-            const matrix = new PIXI.Matrix();
-            const { x, y, rotation, shape: { width, height, points } } = this.document;
-
-            matrix.translate(-width / 2, -height / 2);
-            matrix.rotate(Math.toRadians(rotation || 0));
-            matrix.translate(x + width / 2, y + height / 2);
-            matrix.applyInverse(point, point);
-
-            update = { x, y, shape: { width, height, points: Array.from(points) } };
-            update.shape.points.splice(handle.index * 2, 0, point.x, point.y);
+            const localPoint = canvasToLocal(destination, this.document);
+            const { x, y, shape: { width, height, points } } = this.document;
+            const update = shapeUpdateFrom({ x, y, shape: { width, height, points } });
+            update.shape.points.splice(handle.index * 2, 0, localPoint.x, localPoint.y);
+            this.document.updateSource(update);
+            refreshSize(this);
         } else if (!(handle instanceof PointHandle)) {
             // Not our custom handle (resize handle or other) — let original handle it
             return wrapped(event);
-        }
-
-        if (update) {
-            this.document.updateSource(update);
-            refreshSize(this);
         }
     }, libWrapper.MIXED);
 
@@ -102,23 +98,10 @@ Hooks.once("libWrapper.Ready", () => {
 
         canvas._onDragCanvasPan(originalEvent);
 
-        const matrix = new PIXI.Matrix();
-        const point = new PIXI.Point(destination.x, destination.y);
-        const { x, y, rotation, shape: { width, height, points } } = getOriginalData(this, event);
-
-        matrix.translate(-width / 2, -height / 2);
-        matrix.rotate(Math.toRadians(rotation || 0));
-        matrix.translate(x + width / 2, y + height / 2);
-        matrix.applyInverse(point, point);
-
-        const update = { x, y, shape: { width, height, points: Array.from(points) } };
-
-        if (handle instanceof EdgeHandle) {
-            update.shape.points.splice(handle.index * 2, 0, point.x, point.y);
-        } else {
-            update.shape.points[handle.index * 2] = point.x;
-            update.shape.points[handle.index * 2 + 1] = point.y;
-        }
+        const docData = getOriginalData(this, event);
+        const localPoint = canvasToLocal(destination, docData);
+        const update = shapeUpdateFrom(docData);
+        applyHandlePoint(update, handle, localPoint);
 
         try {
             this.document.updateSource(update);
@@ -138,7 +121,7 @@ Hooks.once("libWrapper.Ready", () => {
         let destination = interactionData?.destination;
         const originalEvent = event.nativeEvent ?? event.data?.originalEvent;
 
-        setRestoreOriginalData(this, event, false);
+        cancelOriginalDataRestore(this, event);
 
         if (!originalEvent?.shiftKey) {
             destination = this.layer.getSnappedPoint(destination);
@@ -150,24 +133,10 @@ Hooks.once("libWrapper.Ready", () => {
         this._editHandle = null;
         this._hoveredEditHandle = null;
 
-        const matrix = new PIXI.Matrix();
-        const point = new PIXI.Point(destination.x, destination.y);
-        const { x, y, rotation, shape: { width, height, points } } = getOriginalData(this, event);
-
-        matrix.translate(-width / 2, -height / 2);
-        matrix.rotate(Math.toRadians(rotation || 0));
-        matrix.translate(x + width / 2, y + height / 2);
-        matrix.applyInverse(point, point);
-
-        let update = { x, y, shape: { width, height, points: Array.from(points) } };
-
-        if (handle instanceof EdgeHandle) {
-            update.shape.points.splice(handle.index * 2, 0, point.x, point.y);
-        } else {
-            update.shape.points[handle.index * 2] = point.x;
-            update.shape.points[handle.index * 2 + 1] = point.y;
-        }
-
+        const docData = getOriginalData(this, event);
+        const localPoint = canvasToLocal(destination, docData);
+        let update = shapeUpdateFrom(docData);
+        applyHandlePoint(update, handle, localPoint);
         update = (() => foundry.canvas?.placeables?.Drawing)().rescaleDimensions(update, 0, 0);
 
         return this.document.update(update, { diff: false });
@@ -210,20 +179,14 @@ Hooks.once("libWrapper.Ready", () => {
             this._editHandle = null;
 
             const { x, y, rotation, shape: { width, height, points } } = this.document;
-            let update = { x, y, shape: { width, height, points: Array.from(points) } };
+            let update = shapeUpdateFrom({ x, y, shape: { width, height, points } });
 
             if (handle instanceof EdgeHandle) {
+                // Move the edge's start point to the right-click origin, then delete this handle's vertex.
                 const origin = getInteractionData(event).origin;
-                const matrix = new PIXI.Matrix();
-                const point = new PIXI.Point(origin.x, origin.y);
-
-                matrix.translate(-width / 2, -height / 2);
-                matrix.rotate(Math.toRadians(rotation || 0));
-                matrix.translate(x + width / 2, y + height / 2);
-                matrix.applyInverse(point, point);
-
-                update.shape.points[(handle.index * 2 + points.length - 2) % points.length] = point.x;
-                update.shape.points[(handle.index * 2 + points.length - 1) % points.length] = point.y;
+                const localPoint = canvasToLocal(origin, { x, y, rotation, shape: { width, height } });
+                update.shape.points[(handle.index * 2 + points.length - 2) % points.length] = localPoint.x;
+                update.shape.points[(handle.index * 2 + points.length - 1) % points.length] = localPoint.y;
             }
 
             update.shape.points.splice(handle.index * 2, 2);
@@ -243,8 +206,34 @@ Hooks.once("libWrapper.Ready", () => {
             this._hoveredEditHandle = null;
         }
     };
-    
+
 });
+
+// Transforms a canvas-space point into the drawing's local (unrotated, origin-at-top-left) space.
+function canvasToLocal(canvasPoint, { x, y, rotation, shape: { width, height } }) {
+    const local = new PIXI.Point(canvasPoint.x, canvasPoint.y);
+    new PIXI.Matrix()
+        .translate(-width / 2, -height / 2)
+        .rotate(Math.toRadians(rotation || 0))
+        .translate(x + width / 2, y + height / 2)
+        .applyInverse(local, local);
+    return local;
+}
+
+// Returns a mutable shape update object seeded from the given document data.
+function shapeUpdateFrom({ x, y, shape: { width, height, points } }) {
+    return { x, y, shape: { width, height, points: Array.from(points) } };
+}
+
+// Applies a handle's local point into the update: EdgeHandle inserts a new vertex; PointHandle moves an existing one.
+function applyHandlePoint(update, handle, localPoint) {
+    if (handle instanceof EdgeHandle) {
+        update.shape.points.splice(handle.index * 2, 0, localPoint.x, localPoint.y);
+    } else {
+        update.shape.points[handle.index * 2] = localPoint.x;
+        update.shape.points[handle.index * 2 + 1] = localPoint.y;
+    }
+}
 
 foundry.canvas.placeables.Drawing.prototype._editMode = false;
 
