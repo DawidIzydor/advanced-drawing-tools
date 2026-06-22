@@ -1,9 +1,13 @@
 import { MODULE_ID } from "./const.js";
-import { cleanData, saveValue, stringifyValue } from "./utils.js";
+import { saveValue, stringifyValue } from "./utils.js";
 
 Hooks.once("libWrapper.Ready", () => {
-    libWrapper.register(MODULE_ID, "DrawingConfig.prototype._getSubmitData", function (wrapped, ...args) {
-        const data = foundry.utils.flattenObject(wrapped(...args));
+    try {
+    libWrapper.register(MODULE_ID, "foundry.applications.api.DocumentSheetV2.prototype._prepareSubmitData",
+
+    function (wrapped, event, form, formData, updateData) {
+        // 1) Start with the prepared data from the base sheet
+        const data = wrapped(event, form, formData, updateData);
 
         if (this.form.querySelector(`input[class="${MODULE_ID}--lineStyle-dash"]`).checked) {
             data[`flags.${MODULE_ID}.lineStyle.dash`] = [
@@ -53,8 +57,11 @@ Hooks.once("libWrapper.Ready", () => {
         processStringArray(`flags.${MODULE_ID}.textStyle.fill`);
         processNumberArray(`flags.${MODULE_ID}.textStyle.fillGradientStops`);
 
-        return foundry.utils.flattenObject(cleanData(data, { deletionKeys: !this.options.configureDefault }));
-    }, libWrapper.WRAPPER);
+        return data;
+        }, libWrapper.WRAPPER);
+    } catch(e) {
+        console.warn(`${MODULE_ID} | _prepareSubmitData wrapper failed (API may have changed in v14):`, e);
+    }
 });
 
 Hooks.on("renderDrawingConfig", (app, html) => {

@@ -11,8 +11,8 @@
   ],
   "version": "2.1.1",
   "compatibility": {
-    "minimum": "10",
-    "verified": "12"
+    "minimum": "14",
+    "verified": "14"
   },
   "minimumCoreVersion": "10",
   "esmodules": [

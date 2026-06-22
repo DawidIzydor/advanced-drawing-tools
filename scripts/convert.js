@@ -5,11 +5,12 @@ Drawing.prototype._convertToPolygon = async function ({ confirm = false } = {}) 
         return;
     }
 
-    return await (confirm ? Dialog.confirm({
-        title: `${MODULE_NAME}: Convert Drawing to Polygon`,
+    return await (confirm ? foundry.applications.api.DialogV2.confirm({
+        window: { title: `${MODULE_NAME}: Convert Drawing to Polygon` },
         content: `<p>Permanently convert this Drawing to a Polygon?</p>`,
-        defaultYes: false
-    }) : Promise.resolve()).then(async result => {
+        yes: { label: "Yes" },
+        no: { label: "No", default: true }
+    }) : Promise.resolve(true)).then(async result => {
         if (!result) {
             return;
         }

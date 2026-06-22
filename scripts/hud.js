@@ -87,33 +87,17 @@ Hooks.on("renderDrawingHUD", (hud, html) => {
 });
 
 async function unlockDrawing(hud) {
-    return await new Promise(resolve => {
-        if (hud.object.document.locked) {
-            new Dialog({
-                title: `${MODULE_NAME}: Unlock Drawing`,
-                content: `<p>Unlock this Drawing?</p>`,
-                buttons: {
-                    yes: {
-                        icon: '<i class="fas fa-check"></i>',
-                        label: "Yes",
-                        callback: () => resolve(true)
-                    },
-                    no: {
-                        icon: '<i class="fas fa-times"></i>',
-                        label: "No",
-                        callback: () => resolve(false)
-                    },
-                },
-            }).render(true);
-        } else {
-            resolve(false);
-        }
-    }).then(async result => {
-        if (!result) {
-            return;
-        }
+    if (!hud.object.document.locked) return;
 
-        await hud.object.document.update({ locked: false });
-        hud.render(true);
+    const confirmed = await foundry.applications.api.DialogV2.confirm({
+        window: { title: `${MODULE_NAME}: Unlock Drawing` },
+        content: `<p>Unlock this Drawing?</p>`,
+        yes: { label: "Yes" },
+        no: { label: "No" }
     });
+
+    if (!confirmed) return;
+
+    await hud.object.document.update({ locked: false });
+    hud.render(true);
 }
