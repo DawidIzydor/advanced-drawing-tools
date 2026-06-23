@@ -355,8 +355,8 @@ class PointHandle extends PIXI.Graphics {
 
         const r = lw * (this._hover ? 4 : 3);
 
-        this.clear()
-            .circle(0, 0, r)
+        this.clear();
+        this.circle(0, 0, r)
             .fill({ color: 0xFFFFFF, alpha: 1.0 })
             .stroke({ width: lw, color: 0x000000, alpha: 1.0 });
 
@@ -406,8 +406,8 @@ class EdgeHandle extends PIXI.Graphics {
         const w = Math.hypot(ax - bx, ay - by);
         const h = lw * (this._hover ? 4 / 3 : 1) * 2;
 
-        this.clear()
-            .rect(-w / 2, -h / 2, w, h)
+        this.clear();
+        this.poly([-w / 2, -h / 2, w / 2, -h / 2, w / 2, h / 2, -w / 2, h / 2], true)
             .fill({ color: 0xFFFFFF, alpha: 1.0 });
 
         if (this.index === 0) {
