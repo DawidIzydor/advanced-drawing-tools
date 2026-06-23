@@ -29,7 +29,11 @@ foundry.canvas.placeables.Drawing.prototype._convertToPolygon = async function (
         }
 
         this.document.shape.type = "p";
-        update = this._rescaleDimensions(update, 0, 0);
+        
+       
+        update = (() => foundry.canvas?.placeables?.Drawing)().rescaleDimensions(update, 0, 0);
+        
+        
         update.shape.type = "p";
 
         if (this.document.fillType === CONST.DRAWING_FILL_TYPES.NONE) {

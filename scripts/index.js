@@ -22,33 +22,9 @@ Hooks.once("libWrapper.Ready", () => {
         console.warn(`${MODULE_ID} | getSnappedPoint wrapper failed:`, e);
     }
 
-
-    if (!foundry.utils.isNewerVersion(game.version, 11)) {
-        libWrapper.register(MODULE_ID, "Drawing.prototype._rescaleDimensions", function (original, dx, dy) {
-            let { points, width, height } = original.shape;
-            width += dx;
-            height += dy;
-            points = points || [];
-
-            // Rescale polygon points
-            if (this.isPolygon) {
-                const scaleX = 1 + (dx / original.shape.width);
-                const scaleY = 1 + (dy / original.shape.height);
-                points = points.map((p, i) => p * (i % 2 ? scaleY : scaleX));
-            }
-
-            // Normalize the shape
-            return this.constructor.normalizeShape({
-                x: original.x,
-                y: original.y,
-                shape: { width: Math.roundFast(width), height: Math.roundFast(height), points }
-            });
-        }, libWrapper.OVERRIDE);
-    } else {
-        foundry.canvas.placeables.Drawing.prototype._rescaleDimensions = function (original, dx, dy) {
-            return foundry.canvas.placeables.Drawing.rescaleDimensions(original, dx, dy);
-        };
-    }
+    foundry.canvas.placeables.Drawing.prototype._rescaleDimensions = function (original, dx, dy) {
+        return foundry.canvas.placeables.Drawing.rescaleDimensions(original, dx, dy);
+    };
 });
 
 function preProcess(data) {
@@ -70,16 +46,22 @@ Hooks.on("preUpdateDrawing", (document, data) => {
 });
 
 Hooks.once("init", () => {
-    if (foundry.utils.isNewerVersion(game.version, 11)) {
-        Hooks.on("updateDrawing", (document, changes) => {
-            if (!document.rendered) {
-                return;
-            }
 
-            if (changes.flags && (changes.flags[MODULE_ID] !== undefined
-                || changes.flags[`-=${MODULE_ID}`] !== undefined)) {
-                document.object.refresh();
-            }
-        });
-    }
+    Hooks.on("updateDrawing", (document, changes) => {
+        if (!document.rendered) {
+            return;
+        }
+
+        // Refresh when module flags change
+        if (changes.flags && (changes.flags[MODULE_ID] !== undefined
+            || changes.flags[`-=${MODULE_ID}`] !== undefined)) {
+            document.object.refresh();
+        }
+        
+        // Also refresh when text changes (to ensure text rendering updates)
+        if (changes.text !== undefined) {
+            document.object.refresh();
+        }
+    });
+    
 });

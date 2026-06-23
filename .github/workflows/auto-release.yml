@@ -1,0 +1,74 @@
+name: Auto Release on Branch Creation
+
+on:
+  push:
+    branches:
+      - 'release/**'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Extract version number
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#release/}" >> $GITHUB_OUTPUT
+
+      - name: Substitute version, manifest, download, and changelog in module.json
+        uses: microsoft/variable-substitution@v1
+        with:
+          files: 'module.json'
+        env:
+          version: ${{ steps.version.outputs.version }}
+          manifest: https://github.com/${{ github.repository }}/releases/latest/download/module.json
+          download: https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.version }}/module.zip
+          changelog: https://github.com/${{ github.repository }}/releases/tag/v${{ steps.version.outputs.version }}
+
+      - name: Commit version bump to main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add module.json
+          git commit -m "chore: bump version to ${{ steps.version.outputs.version }}"
+          git push origin HEAD:main
+
+      - name: Create zip archive
+        run: |
+          zip -r module.zip module.json LICENSE README.md scripts/ images/
+
+      - name: Create GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: "v${{ steps.version.outputs.version }}"
+          name: "${{ steps.version.outputs.version }}"
+          body: "Automated release from branch creation"
+          artifacts: "module.zip, module.json"
+          allowUpdates: true
+          makeLatest: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release to Foundry VTT
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          curl -X POST https://foundryvtt.com/_api/packages/release_version/ \
+            -H "Content-Type: application/json" \
+            -H "Authorization: ${{ secrets.FOUNDRY_RELEASE_TOKEN }}" \
+            -d "{
+              \"id\": \"advanced-drawing-tools\",
+              \"release\": {
+                \"version\": \"${VERSION}\",
+                \"manifest\": \"https://github.com/${{ github.repository }}/releases/download/v${VERSION}/module.json\",
+                \"notes\": \"https://github.com/${{ github.repository }}/releases/tag/v${VERSION}\",
+                \"compatibility\": {
+                  \"minimum\": \"13\",
+                  \"verified\": \"13\",
+                  \"maximum\": \"\"
+                }
+              }
+            }"
