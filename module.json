@@ -18,7 +18,8 @@
     "verified": "14"
   },
   "esmodules": [
-    "scripts/index.js"
+    "scripts/index.js",
+    "scripts/tests/edit-mode.test.js"
   ],
   "relationships": {
     "requires": [
