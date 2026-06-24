@@ -1,5 +1,6 @@
 import { MODULE_ID } from "./const.js";
 import { calculateValue } from "./utils.js";
+import { _PIXI_FLUENT_FILL, _PIXI_LEGACY_FILL } from "./edit-mode.js";
 
 Hooks.on("refreshDrawing", drawing => {
     if (drawing.shape?.destroyed) {
@@ -86,6 +87,8 @@ function drawDashedPolygon(g, points, dash, gap, lineWidth, color, alpha, closed
     const n = points.length / 2;
     const segmentCount = closed ? n : n - 1;
 
+    if (_PIXI_LEGACY_FILL) g.lineStyle(lineWidth, color, alpha);
+
     let dashRemain = dash;
     let isDash = true;
 
@@ -123,5 +126,5 @@ function drawDashedPolygon(g, points, dash, gap, lineWidth, color, alpha, closed
         }
     }
 
-    g.stroke({ width: lineWidth, color, alpha });
+    if (_PIXI_FLUENT_FILL) g.stroke({ width: lineWidth, color, alpha });
 }

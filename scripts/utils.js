@@ -1,8 +1,7 @@
 import { DEFAULT_FLAGS, MODULE_ID } from "./const.js";
 
-// Returns true for our module's own flag keys, excluding deletion-key entries like ".-=foo"
 function isModuleFlag(key) {
-    return key.startsWith(`flags.${MODULE_ID}.`) && !key.includes(".-=");
+    return key.startsWith(`flags.${MODULE_ID}.`);
 }
 
 export function parseValue(value) {
@@ -123,7 +122,7 @@ export function cleanData(data, { inplace = false, deletionKeys = false, keepOth
             const startDepth = partial ? pathParts.length - 1 : 1;
 
             for (let i = startDepth; i < pathParts.length; i++) {
-                newData[`${pathParts.slice(0, i).join(".")}.-=${pathParts[i]}`] = null;
+                newData[pathParts.slice(0, i + 1).join(".")] = foundry.data.operators.ForcedDeletion;
             }
         }
     }
@@ -152,11 +151,11 @@ export function cleanData(data, { inplace = false, deletionKeys = false, keepOth
         if (!isDefaultValue) {
             newData[key] = value;
 
-            // Cancel the deletion keys for this path — the value is being set, not erased.
+            // Cancel the ForcedDeletion entries for this path — the value is being set, not erased.
             if (deletionKeys || inplace) {
                 const pathParts = key.split(".");
                 for (let i = 1; i < pathParts.length; i++) {
-                    delete newData[`${pathParts.slice(0, i).join(".")}.-=${pathParts[i]}`];
+                    delete newData[pathParts.slice(0, i + 1).join(".")];
                 }
             }
         } else if (!deletionKeys) {
@@ -166,21 +165,13 @@ export function cleanData(data, { inplace = false, deletionKeys = false, keepOth
         }
     }
 
-    // Phase 3: Remove child entries made redundant by a parent deletion key.
-    // e.g. if we have "-=fillStyle" there is no need to also carry "-=fillStyle.texture.width".
+    // Phase 3: Remove child entries made redundant by a parent ForcedDeletion.
+    // e.g. if "fillStyle" is ForcedDeletion there is no need to also carry "fillStyle.texture.width".
     if (deletionKeys || inplace) {
         for (const key in newData) {
-            if (!key.startsWith(`flags.${MODULE_ID}.`) && !key.startsWith(`flags.-=${MODULE_ID}`)) continue;
-
-            const pathParts = key.split(".");
-            if (!pathParts[pathParts.length - 1].startsWith("-=")) continue;
-
-            const deletedSegment = pathParts[pathParts.length - 1].slice(2); // strip the "-="
-            const parentPath = pathParts.slice(0, pathParts.length - 1).join(".");
-            const childPrefix = `${parentPath}.${deletedSegment}.`;
-
-            delete newData[`${parentPath}.${deletedSegment}`];
-
+            if (newData[key] !== foundry.data.operators.ForcedDeletion) continue;
+            if (!key.startsWith(`flags.${MODULE_ID}`)) continue;
+            const childPrefix = `${key}.`;
             for (const otherKey in newData) {
                 if (otherKey.startsWith(childPrefix)) delete newData[otherKey];
             }
