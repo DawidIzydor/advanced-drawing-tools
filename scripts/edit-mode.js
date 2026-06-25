@@ -16,61 +16,56 @@ Hooks.once("libWrapper.Ready", () => {
     libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype.activateListeners`, function (wrapped, ...args) {
         wrapped(...args);
 
-        this.frame.handle.off("pointerup").on("pointerup", this._onHandleMouseUp.bind(this));
+        this.frame?.handle?.off("pointerup")?.on("pointerup", this._onHandleMouseUp.bind(this));
     }, libWrapper.WRAPPER);
-    
 
-    libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype._onHandleHoverIn`, function (event) {
-        if (this._dragHandle) {
-            return;
-        }
+    // V13: _onHandleHoverIn, _onHandleHoverOut, _onHandleDragStart no longer exist in V14.
+    // Preserved here for reference when re-implementing vertex drag for V14.
+    // libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype._onHandleHoverIn`, function (event) {
+    //     if (this._dragHandle) {
+    //         return;
+    //     }
+    //     const handle = event.target;
+    //     const interactionData = getInteractionData(event);
+    //     if (interactionData) {
+    //         interactionData.handle = handle;
+    //     }
+    //     if (handle instanceof PointHandle || handle instanceof EdgeHandle) {
+    //         handle._hover = true;
+    //         handle.refresh();
+    //     } else if (handle) {
+    //         handle.scale.set(1.5, 1.5);
+    //     }
+    // }, libWrapper.OVERRIDE);
+    //
+    // libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype._onHandleHoverOut`, function (event) {
+    //     const handle = getInteractionData(event).handle;
+    //     if (handle instanceof PointHandle || handle instanceof EdgeHandle) {
+    //         handle._hover = false;
+    //         handle.refresh();
+    //     } else if (handle) {
+    //         handle.scale.set(1.0, 1.0);
+    //     }
+    // }, libWrapper.OVERRIDE);
+    //
+    // libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype._onHandleDragStart`, function (event) {
+    //     const handle = event.target;
+    //     if (handle instanceof PointHandle || handle instanceof EdgeHandle) {
+    //         if (!this.document.locked) {
+    //             this._dragHandle = true;
+    //             handle._hover = true;
+    //             handle.refresh();
+    //             this._editHandle = handle;
+    //         } else {
+    //             this._editHandle = null;
+    //         }
+    //     } else {
+    //         if (!this.document.locked) {
+    //             this._dragHandle = true;
+    //         }
+    //     }
+    // }, libWrapper.OVERRIDE);
 
-        const handle = event.target;
-        const interactionData = getInteractionData(event);
-
-        if (interactionData) {
-            interactionData.handle = handle;
-        }
-
-        if (handle instanceof PointHandle || handle instanceof EdgeHandle) {
-            handle._hover = true;
-            handle.refresh();
-        } else if (handle) {
-            handle.scale.set(1.5, 1.5);
-        }
-    }, libWrapper.OVERRIDE);
-
-    libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype._onHandleHoverOut`, function (event) {
-        const handle = getInteractionData(event).handle;
-
-        if (handle instanceof PointHandle || handle instanceof EdgeHandle) {
-            handle._hover = false;
-            handle.refresh();
-        } else if (handle) {
-            handle.scale.set(1.0, 1.0);
-        }
-    }, libWrapper.OVERRIDE);
-
-
-    libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype._onHandleDragStart`, function (event) {
-        const handle = event.target;
-
-        if (handle instanceof PointHandle || handle instanceof EdgeHandle) {
-            if (!this.document.locked) {
-                this._dragHandle = true;
-                handle._hover = true;
-                handle.refresh();
-                this._editHandle = handle;
-            } else {
-                this._editHandle = null;
-            }
-        } else {
-            if (!this.document.locked) {
-                this._dragHandle = true;
-            }
-        }
-    }, libWrapper.OVERRIDE);
-    
 
     libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype._onDragLeftStart`, function (wrapped, event) {
         if (!isDraggingHandle(this, event)) {
@@ -109,106 +104,70 @@ Hooks.once("libWrapper.Ready", () => {
         }
     }, libWrapper.MIXED);
 
-    libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype._onHandleDragMove`, function (event) {
-        let { handle, destination, origin } = getInteractionData(event);
-
-        if (this._editHandle) {
-            handle = this._editHandle;
-        }
-
-        const originalEvent = event.data.originalEvent;
-        let update;
-
-        if (!originalEvent.shiftKey) {
-            destination = this.layer.getSnappedPoint(destination);
-        }
-
-        // Pan the canvas if the drag event approaches the edge
-        canvas._onDragCanvasPan(originalEvent);
-
-        if (handle instanceof PointHandle || handle instanceof EdgeHandle) {
-            const matrix = new PIXI.Matrix();
-            const point = new PIXI.Point(destination.x, destination.y);
-            const { x, y, rotation, shape: { width, height, points } } = getOriginalData(this, event);
-
-            matrix.translate(-width / 2, -height / 2);
-            matrix.rotate(Math.toRadians(rotation || 0));
-            matrix.translate(x + width / 2, y + height / 2);
-            matrix.applyInverse(point, point);
-
-            update = { x, y, shape: { width, height, points: Array.from(points) } };
-
-            if (handle instanceof EdgeHandle) {
-                update.shape.points.splice(handle.index * 2, 0, point.x, point.y);
-            } else {
-                update.shape.points[handle.index * 2] = point.x;
-                update.shape.points[handle.index * 2 + 1] = point.y;
-            }
-        } else {
-            // Update Drawing dimensions
-            const dx = destination.x - origin.x;
-            const dy = destination.y - origin.y;
-
-            update = ((drawing, original, dx, dy) => (() => foundry.canvas?.placeables?.Drawing)().rescaleDimensions(original, dx, dy))(this, getOriginalData(this, event), dx, dy);
-        }
-
-        try {
-            this.document.updateSource(update);
-            refreshSize(this);
-        } catch (err) { }
-    }, libWrapper.OVERRIDE);
-
-    libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype._onHandleDragDrop`, function (event) {
-        let { handle, destination, origin } = getInteractionData(event);
-
-        if (this._editHandle) {
-            handle = this._editHandle;
-        }
-
-        const originalEvent = event.data.originalEvent;
-        let update;
-
-        setRestoreOriginalData(this, event, false);
-
-        if (!originalEvent.shiftKey) {
-            destination = this.layer.getSnappedPoint(destination);
-        }
-
-        if (handle instanceof PointHandle || handle instanceof EdgeHandle) {
-            this._dragHandle = false;
-            handle._hover = false;
-            handle.refresh();
-            this._editHandle = null;
-
-            const matrix = new PIXI.Matrix();
-            const point = new PIXI.Point(destination.x, destination.y);
-            const { x, y, rotation, shape: { width, height, points } } = getOriginalData(this, event);
-
-            matrix.translate(-width / 2, -height / 2);
-            matrix.rotate(Math.toRadians(rotation || 0));
-            matrix.translate(x + width / 2, y + height / 2);
-            matrix.applyInverse(point, point);
-
-            update = { x, y, shape: { width, height, points: Array.from(points) } };
-
-            if (handle instanceof EdgeHandle) {
-                update.shape.points.splice(handle.index * 2, 0, point.x, point.y);
-            } else {
-                update.shape.points[handle.index * 2] = point.x;
-                update.shape.points[handle.index * 2 + 1] = point.y;
-            }
-
-            update = ((drawing, original, dx, dy) => (() => foundry.canvas?.placeables?.Drawing)().rescaleDimensions(original, dx, dy))(this, update, 0, 0);
-        } else {
-            // Update Drawing dimensions
-            const dx = destination.x - origin.x;
-            const dy = destination.y - origin.y;
-
-            update = ((drawing, original, dx, dy) => (() => foundry.canvas?.placeables?.Drawing)().rescaleDimensions(original, dx, dy))(this, getOriginalData(this, event), dx, dy);
-        }
-
-        return this.document.update(update, { diff: false });
-    }, libWrapper.OVERRIDE);
+    // V13: _onHandleDragMove and _onHandleDragDrop no longer exist in V14.
+    // The V14 equivalents will be _onDragLeftMove and _onDragLeftDrop wrappers.
+    // Preserved here for reference.
+    // libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype._onHandleDragMove`, function (event) {
+    //     let { handle, destination, origin } = getInteractionData(event);
+    //     if (this._editHandle) { handle = this._editHandle; }
+    //     const originalEvent = event.data.originalEvent;
+    //     let update;
+    //     if (!originalEvent.shiftKey) { destination = this.layer.getSnappedPoint(destination); }
+    //     canvas._onDragCanvasPan(originalEvent);
+    //     if (handle instanceof PointHandle || handle instanceof EdgeHandle) {
+    //         const matrix = new PIXI.Matrix();
+    //         const point = new PIXI.Point(destination.x, destination.y);
+    //         const { x, y, rotation, shape: { width, height, points } } = getOriginalData(this, event);
+    //         matrix.translate(-width / 2, -height / 2);
+    //         matrix.rotate(Math.toRadians(rotation || 0));
+    //         matrix.translate(x + width / 2, y + height / 2);
+    //         matrix.applyInverse(point, point);
+    //         update = { x, y, shape: { width, height, points: Array.from(points) } };
+    //         if (handle instanceof EdgeHandle) {
+    //             update.shape.points.splice(handle.index * 2, 0, point.x, point.y);
+    //         } else {
+    //             update.shape.points[handle.index * 2] = point.x;
+    //             update.shape.points[handle.index * 2 + 1] = point.y;
+    //         }
+    //     } else {
+    //         const dx = destination.x - origin.x;
+    //         const dy = destination.y - origin.y;
+    //         update = foundry.canvas.placeables.Drawing.rescaleDimensions(getOriginalData(this, event), dx, dy);
+    //     }
+    //     try { this.document.updateSource(update); refreshSize(this); } catch (err) { }
+    // }, libWrapper.OVERRIDE);
+    //
+    // libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype._onHandleDragDrop`, function (event) {
+    //     let { handle, destination, origin } = getInteractionData(event);
+    //     if (this._editHandle) { handle = this._editHandle; }
+    //     const originalEvent = event.data.originalEvent;
+    //     let update;
+    //     setRestoreOriginalData(this, event, false);
+    //     if (!originalEvent.shiftKey) { destination = this.layer.getSnappedPoint(destination); }
+    //     if (handle instanceof PointHandle || handle instanceof EdgeHandle) {
+    //         this._dragHandle = false; handle._hover = false; handle.refresh(); this._editHandle = null;
+    //         const matrix = new PIXI.Matrix();
+    //         const point = new PIXI.Point(destination.x, destination.y);
+    //         const { x, y, rotation, shape: { width, height, points } } = getOriginalData(this, event);
+    //         matrix.translate(-width / 2, -height / 2);
+    //         matrix.rotate(Math.toRadians(rotation || 0));
+    //         matrix.translate(x + width / 2, y + height / 2);
+    //         matrix.applyInverse(point, point);
+    //         update = { x, y, shape: { width, height, points: Array.from(points) } };
+    //         if (handle instanceof EdgeHandle) {
+    //             update.shape.points.splice(handle.index * 2, 0, point.x, point.y);
+    //         } else {
+    //             update.shape.points[handle.index * 2] = point.x;
+    //             update.shape.points[handle.index * 2 + 1] = point.y;
+    //         }
+    //         update = foundry.canvas.placeables.Drawing.rescaleDimensions(update, 0, 0);
+    //     } else {
+    //         const dx = destination.x - origin.x;
+    //         const dy = destination.y - origin.y;
+    //         update = foundry.canvas.placeables.Drawing.rescaleDimensions(getOriginalData(this, event), dx, dy);
+    //     }
+    //     return this.document.update(update, { diff: false });
+    // }, libWrapper.OVERRIDE);
 
 
     libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype._onClickLeft`, function (wrapped, event) {
@@ -299,6 +258,27 @@ Hooks.once("libWrapper.Ready", () => {
 };
 
 (() => foundry.canvas?.placeables?.Drawing)().prototype._editHandles = null;
+
+(() => foundry.canvas?.placeables?.Drawing)().prototype._onHandleHoverIn = function (event) {
+    if (this._dragHandle) return;
+    const handle = event.target;
+    if (handle instanceof PointHandle || handle instanceof EdgeHandle) {
+        handle._hover = true;
+        handle.refresh();
+    } else if (handle) {
+        handle.scale.set(1.5, 1.5);
+    }
+};
+
+(() => foundry.canvas?.placeables?.Drawing)().prototype._onHandleHoverOut = function (event) {
+    const handle = event.target;
+    if (handle instanceof PointHandle || handle instanceof EdgeHandle) {
+        handle._hover = false;
+        handle.refresh();
+    } else if (handle) {
+        handle.scale.set(1.0, 1.0);
+    }
+};
 
 (() => foundry.canvas?.placeables?.Drawing)().prototype._refreshEditMode = function () {
     const document = this.document;
