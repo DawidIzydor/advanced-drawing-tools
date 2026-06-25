@@ -10,14 +10,7 @@ import "./precise-text.js";
 import "./shape.js";
 import "./text.js";
 
-Hooks.once("libWrapper.Ready", () => {
-    // V13 snap precision override (no longer needed - native V14 snapping is sufficient)
-    // V13 used gridPrecision property which no longer exists in V14
-    // libWrapper.register(MODULE_ID, "foundry.canvas.layers.DrawingsLayer.prototype.gridPrecision", ...);
-    
-    // V13 rescaleDimensions commented reference - scaling works without it
-    // libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.rescaleDimensions`, ...);
-});
+
 
 function preProcess(data) {
     const fill = foundry.utils.getProperty(data, `flags.${MODULE_ID}.textStyle.fill`);
