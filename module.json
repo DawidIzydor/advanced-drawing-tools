@@ -12,7 +12,7 @@
       "email": "admin@dawid-izydor.pl"
     }
   ],
-  "version": "3.1.0",
+  "version": "3.2.0",
   "compatibility": {
     "minimum": "14",
     "verified": "14"
@@ -30,8 +30,8 @@
   },
   "url": "https://github.com/DawidIzydor/advanced-drawing-tools",
   "manifest": "https://raw.githubusercontent.com/DawidIzydor/advanced-drawing-tools/main/module.json",
-  "download": "https://github.com/DawidIzydor/advanced-drawing-tools/releases/download/3.1.0/module.zip",
-  "changelog": "https://github.com/DawidIzydor/advanced-drawing-tools/releases/tag/3.1.0",
+  "download": "https://github.com/DawidIzydor/advanced-drawing-tools/releases/download/3.2.0/module.zip",
+  "changelog": "https://github.com/DawidIzydor/advanced-drawing-tools/releases/tag/3.2.0",
   "bugs": "https://github.com/DawidIzydor/advanced-drawing-tools/issues",
   "readme": "https://raw.githubusercontent.com/DawidIzydor/advanced-drawing-tools/main/README.md",
   "license": "https://raw.githubusercontent.com/DawidIzydor/advanced-drawing-tools/main/LICENSE"
