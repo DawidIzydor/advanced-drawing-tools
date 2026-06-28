@@ -46,38 +46,51 @@ Hooks.on("refreshDrawing", drawing => {
     }
 
     if (document.fillType === CONST.DRAWING_FILL_TYPES.PATTERN) {
-        const texture = drawing.texture;
-        const fs = document.getFlag(MODULE_ID, "fillStyle");
-
-        if (texture && fs) {
+        const fillSprite = drawing.fill ?? drawing.mesh;
+        if (fillSprite) {
+            // drawing.texture may be null in v14; fall back to the sprite's own texture.
+            const texture = drawing.texture ?? fillSprite.texture;
+            const fs = document.getFlag(MODULE_ID, "fillStyle");
             const transform = fs?.transform;
 
             // Compute the tile scale from the desired pixel/percent size.
-            // If only one axis is specified, mirror it to the other so the texture isn't distorted.
-            let scaleW = calculateValue(fs?.texture?.width,  document.shape.width)  / texture.width;
-            let scaleH = calculateValue(fs?.texture?.height, document.shape.height) / texture.height;
-            scaleW = scaleW || scaleH || 1;
-            scaleH = scaleH || scaleW || 1;
+            // Default to 1:1 (natural texture size = repeating pattern) so the module
+            // always overrides whatever Foundry set — in v14 the base code may stretch
+            // the texture to fill the shape, making the pattern look solid.
+            let scaleW = 1;
+            let scaleH = 1;
+            if (texture && fs?.texture) {
+                scaleW = calculateValue(fs.texture.width,  document.shape.width)  / texture.width;
+                scaleH = calculateValue(fs.texture.height, document.shape.height) / texture.height;
+                scaleW = scaleW || scaleH || 1;
+                scaleH = scaleH || scaleW || 1;
+            }
 
-            const tileW = scaleW * texture.width;
-            const tileH = scaleH * texture.height;
+            const tileW = scaleW * (texture?.width  ?? 1);
+            const tileH = scaleH * (texture?.height ?? 1);
 
-            const matrix = new PIXI.Matrix().setTransform(
-                calculateValue(transform?.position?.x, tileW) ?? 0,
-                calculateValue(transform?.position?.y, tileH) ?? 0,
-                calculateValue(transform?.pivot?.x,    tileW) ?? 0,
-                calculateValue(transform?.pivot?.y,    tileH) ?? 0,
-                transform?.scale?.x ?? 1,
-                transform?.scale?.y ?? 1,
-                (transform?.rotation ?? 0) / 180 * Math.PI,
-                (transform?.skew?.x ?? 0) / 180 * Math.PI,
-                (transform?.skew?.y ?? 0) / 180 * Math.PI
-            ).append(new PIXI.Matrix(scaleW, 0, 0, scaleH));
+            const posX      = calculateValue(transform?.position?.x, tileW) ?? 0;
+            const posY      = calculateValue(transform?.position?.y, tileH) ?? 0;
+            const pivX      = calculateValue(transform?.pivot?.x,    tileW) ?? 0;
+            const pivY      = calculateValue(transform?.pivot?.y,    tileH) ?? 0;
+            const userScaleX = transform?.scale?.x ?? 1;
+            const userScaleY = transform?.scale?.y ?? 1;
+            const rot       = (transform?.rotation ?? 0) / 180 * Math.PI;
+            const skewX     = (transform?.skew?.x ?? 0) / 180 * Math.PI;
+            const skewY     = (transform?.skew?.y ?? 0) / 180 * Math.PI;
 
-            // v14: TilingSprite is used for pattern fills; apply transform if available
-            const fillSprite = drawing.fill ?? drawing.mesh;
-            if (fillSprite?.tileTransform) {
+            if (typeof fillSprite.tileTransform?.setFromMatrix === "function") {
+                // PixiJS v7: apply full matrix via tileTransform
+                const matrix = new PIXI.Matrix()
+                    .setTransform(posX, posY, pivX, pivY, userScaleX, userScaleY, rot, skewX, skewY)
+                    .append(new PIXI.Matrix(scaleW, 0, 0, scaleH));
                 fillSprite.tileTransform.setFromMatrix(matrix);
+            } else {
+                // PixiJS v8: tileTransform.setFromMatrix was removed; apply individual tile properties.
+                // Pivot is approximated as a simple translation offset (skew is not supported here).
+                if (fillSprite.tileScale) fillSprite.tileScale.set(scaleW * userScaleX, scaleH * userScaleY);
+                if (fillSprite.tilePosition) fillSprite.tilePosition.set(posX - pivX, posY - pivY);
+                if ("tileRotation" in fillSprite) fillSprite.tileRotation = rot;
             }
         }
     }

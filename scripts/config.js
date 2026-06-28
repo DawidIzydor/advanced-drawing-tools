@@ -15,23 +15,24 @@ Hooks.once("libWrapper.Ready", () => {
         }
 
         // ---- lineStyle.dash handling ----
-        // Read the UI state from the provided form element
-        const dashToggle = form?.querySelector(`input.${MODULE_ID}--lineStyle-dash`);
-        
         // Ensure nested structure exists
         data.flags = data.flags || {};
         data.flags[MODULE_ID] = data.flags[MODULE_ID] || {};
         data.flags[MODULE_ID].lineStyle = data.flags[MODULE_ID].lineStyle || {};
-        
-        if (dashToggle?.checked) {
-            // Ensure we have a 2-length numeric array; coerce strings -> numbers with sane defaults
-            const a = data.flags[MODULE_ID].lineStyle.dash;
-            const d0 = Array.isArray(a) ? a[0] : undefined;
-            const d1 = Array.isArray(a) ? a[1] : undefined;
-            data.flags[MODULE_ID].lineStyle.dash = [
-            Number(d0) || 8,
-            Number(d1) || 5
-            ];
+
+        // Read state from the prepared data object — FormDataExtended sets unchecked
+        // checkboxes to false, so this is reliable in v13 and v14 without DOM queries.
+        const dashEnabled = data.flags[MODULE_ID].lineStyle.dashEnabled;
+        const d0 = data.flags[MODULE_ID].lineStyle.dashSegment;
+        const d1 = data.flags[MODULE_ID].lineStyle.dashGap;
+
+        // Remove helper fields — they are not part of the module's data schema.
+        delete data.flags[MODULE_ID].lineStyle.dashEnabled;
+        delete data.flags[MODULE_ID].lineStyle.dashSegment;
+        delete data.flags[MODULE_ID].lineStyle.dashGap;
+
+        if (dashEnabled) {
+            data.flags[MODULE_ID].lineStyle.dash = [Number(d0) || 8, Number(d1) || 5];
         } else {
             data.flags[MODULE_ID].lineStyle.dash = null;
         }
@@ -360,11 +361,11 @@ Hooks.on("renderDrawingConfig", (app, root, data) => {
             <label>Dashed <span class="units">(Pixels)</span></label>
             <div class="form-fields">
                 <label>Dash</label>
-                <input type="number" name="flags.${MODULE_ID}.lineStyle.dash" min="0.1" step="0.1" placeholder="8" value="${ls.dash?.[0] ?? "8"}">
+                <input type="number" name="flags.${MODULE_ID}.lineStyle.dashSegment" min="0.1" step="0.1" placeholder="8" value="${ls.dash?.[0] ?? "8"}">
                 <label>Gap</label>
-                <input type="number" name="flags.${MODULE_ID}.lineStyle.dash" min="0.1" step="0.1" placeholder="5" value="${ls.dash?.[1] ?? "5"}">
+                <input type="number" name="flags.${MODULE_ID}.lineStyle.dashGap" min="0.1" step="0.1" placeholder="5" value="${ls.dash?.[1] ?? "5"}">
                 &nbsp;&nbsp;&nbsp;
-                <input type="checkbox" name="flags.${MODULE_ID}.lineStyle.dashEnabled" class="${MODULE_ID}--lineStyle-dash" ${ls.dash ? "checked" : ""}>
+                <input type="checkbox" name="flags.${MODULE_ID}.lineStyle.dashEnabled" ${ls.dash ? "checked" : ""}>
             </div>
         </div>
     `);
@@ -474,7 +475,7 @@ Hooks.on("renderDrawingConfig", (app, root, data) => {
         </div>
         <div class="form-group">
             <label>Line Height <span class="units">(Pixels)</span></label>
-            <input type="number" name="flags.${MODULE_ID}.textStyle.lineHeight" min="0" step="0.1" placeholder="normal" value="${ts.lineHeight ?? "normal"}">
+            <input type="number" name="flags.${MODULE_ID}.textStyle.lineHeight" min="0" step="0.1" placeholder="normal" value="${(ts.lineHeight != null && ts.lineHeight !== "normal") ? ts.lineHeight : ""}">
         </div> 
         <div class="form-group">
             <label>Word Wrap Width <span class="units">(Pixels or %)</span></label>
