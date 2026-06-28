@@ -202,7 +202,8 @@ Hooks.once("quenchReady", (quench) => {
             // then compute the world position of a handle at (ptX, ptY).
             const effectiveX = drawingX - drawingPivotX;
             const effectiveY = drawingY - drawingPivotY;
-            let ehX = 0, ehY = 0, ehPivotX = 0, ehPivotY = 0, ehRot = 0;
+            // Default: no editHandles offset, but drawing's own pivot still shifts local→world
+            let ehX = -drawingPivotX, ehY = -drawingPivotY, ehPivotX = 0, ehPivotY = 0, ehRot = 0;
             if (Math.abs(effectiveX - docX) > 0.5 || Math.abs(effectiveY - docY) > 0.5) {
                 ehX = docX + width / 2;
                 ehY = docY + height / 2;

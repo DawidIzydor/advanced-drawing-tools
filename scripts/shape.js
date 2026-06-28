@@ -1,5 +1,6 @@
 import { MODULE_ID } from "./const.js";
 import { calculateValue } from "./utils.js";
+import { _PIXI_FLUENT_FILL, _PIXI_LEGACY_FILL } from "./edit-mode.js";
 
 // When a dashed overlay is active, zero the native strokeWidth before Foundry
 // draws the base shape so the solid stroke doesn't bleed through the dashes.
@@ -110,9 +111,9 @@ function _refreshDashOverlay(drawing) {
 
     const isClosed = doc.shape.type !== "f";
 
+    if (_PIXI_LEGACY_FILL) g.lineStyle(width, color.valueOf(), alpha);
     _strokeDashed(g, pts, isClosed, segment, gap);
-
-    g.stroke({ width, color: color.valueOf(), alpha });
+    if (_PIXI_FLUENT_FILL) g.stroke({ width, color: color.valueOf(), alpha });
 }
 
 function _getShapePoints(doc) {
