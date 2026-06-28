@@ -14,29 +14,6 @@ Hooks.once("libWrapper.Ready", () => {
             return data;
         }
 
-        // ---- lineStyle.dash handling ----
-        // Ensure nested structure exists
-        data.flags = data.flags || {};
-        data.flags[MODULE_ID] = data.flags[MODULE_ID] || {};
-        data.flags[MODULE_ID].lineStyle = data.flags[MODULE_ID].lineStyle || {};
-
-        // Read state from the prepared data object — FormDataExtended sets unchecked
-        // checkboxes to false, so this is reliable in v13 and v14 without DOM queries.
-        const dashEnabled = data.flags[MODULE_ID].lineStyle.dashEnabled;
-        const d0 = data.flags[MODULE_ID].lineStyle.dashSegment;
-        const d1 = data.flags[MODULE_ID].lineStyle.dashGap;
-
-        // Remove helper fields — they are not part of the module's data schema.
-        delete data.flags[MODULE_ID].lineStyle.dashEnabled;
-        delete data.flags[MODULE_ID].lineStyle.dashSegment;
-        delete data.flags[MODULE_ID].lineStyle.dashGap;
-
-        if (dashEnabled) {
-            data.flags[MODULE_ID].lineStyle.dash = [Number(d0) || 8, Number(d1) || 5];
-        } else {
-            data.flags[MODULE_ID].lineStyle.dash = null;
-        }
-
         // ---- helpers ----
         const processValue = (obj, path) => {
             const keys = path.split('.');
@@ -88,12 +65,6 @@ Hooks.once("libWrapper.Ready", () => {
         };
 
         // ---- numeric-ish values coerced through saveValue ----
-        processValue(data, `flags.${MODULE_ID}.fillStyle.texture.width`);
-        processValue(data, `flags.${MODULE_ID}.fillStyle.texture.height`);
-        processValue(data, `flags.${MODULE_ID}.fillStyle.transform.position.x`);
-        processValue(data, `flags.${MODULE_ID}.fillStyle.transform.position.y`);
-        processValue(data, `flags.${MODULE_ID}.fillStyle.transform.pivot.x`);
-        processValue(data, `flags.${MODULE_ID}.fillStyle.transform.pivot.y`);
         processValue(data, `flags.${MODULE_ID}.textStyle.wordWrapWidth`);
 
         // ---- arrays from form inputs ----
@@ -212,8 +183,6 @@ Hooks.on("renderDrawingConfig", (app, root, data) => {
     const $ = getDOMHelper(root);
     
     const document = app.document;
-    const ls = document.getFlag(MODULE_ID, "lineStyle") ?? {};
-    const fs = document.getFlag(MODULE_ID, "fillStyle") ?? {};
     const ts = document.getFlag(MODULE_ID, "textStyle") ?? {};
 
     // Add scrolling styles for the drawing config form
@@ -356,71 +325,6 @@ Hooks.on("renderDrawingConfig", (app, root, data) => {
         <textarea name="text" style="font-family: var(--font-primary); min-height: calc(var(--form-field-height) + 3px); height: 100; border-color: var(--color-border-light-tertiary);">${document.text ?? ""}</textarea>
     `);
 
-    $.find(`input[name="strokeWidth"]`).closest(".form-group").after(`
-        <div class="form-group">
-            <label>Dashed <span class="units">(Pixels)</span></label>
-            <div class="form-fields">
-                <label>Dash</label>
-                <input type="number" name="flags.${MODULE_ID}.lineStyle.dashSegment" min="0.1" step="0.1" placeholder="8" value="${ls.dash?.[0] ?? "8"}">
-                <label>Gap</label>
-                <input type="number" name="flags.${MODULE_ID}.lineStyle.dashGap" min="0.1" step="0.1" placeholder="5" value="${ls.dash?.[1] ?? "5"}">
-                &nbsp;&nbsp;&nbsp;
-                <input type="checkbox" name="flags.${MODULE_ID}.lineStyle.dashEnabled" ${ls.dash ? "checked" : ""}>
-            </div>
-        </div>
-    `);
-
-    $.find(`div[data-tab="fill"]`).append(`
-        <div class="form-group">
-            <label>Texture Size <span class="units">(Pixels or %)</span></label>
-            <div class="form-fields">
-                <label>X</label>
-                <input type="text" name="flags.${MODULE_ID}.fillStyle.texture.width" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="Width" value="${stringifyValue(fs.texture?.width) ?? ""}">
-                <label>Y</label>
-                <input type="text" name="flags.${MODULE_ID}.fillStyle.texture.height" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="Height" value="${stringifyValue(fs.texture?.height) ?? ""}">
-            </div>
-        </div>
-        <div class="form-group">
-            <label>Texture Position <span class="units">(Pixels or %)</span></label>
-            <div class="form-fields">
-                <label>X</label>
-                <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.position.x" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="0px" value="${stringifyValue(fs.transform?.position?.x) ?? "0px"}">
-                <label>Y</label>
-                <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.position.y" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="0px" value="${stringifyValue(fs.transform?.position?.y) ?? "0px"}">
-            </div>
-        </div>
-        <div class="form-group">
-            <label>Texture Pivot <span class="units">(Pixels or %)</span></label>
-            <div class="form-fields">
-                <label>X</label>
-                <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.pivot.x" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="0px" value="${stringifyValue(fs.transform?.pivot?.x) ?? "0px"}">
-                <label>Y</label>
-                <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.pivot.y" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="0px" value="${stringifyValue(fs.transform?.pivot?.y) ?? "0px"}">
-            </div>
-        </div>
-        <div class="form-group">
-            <label>Texture Scale</label>
-            <div class="form-fields">
-                <label>X</label>
-                <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.scale.x" data-dtype="Number" placeholder="1" value="${fs.transform?.scale?.x ?? "1"}">
-                <label>Y</label>
-                <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.scale.y" data-dtype="Number" placeholder="1" value="${fs.transform?.scale?.y ?? "1"}">
-            </div>
-        </div>
-        <div class="form-group">
-            <label>Texture Rotation <span class="units">(Degrees)</span></label>
-            <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.rotation" data-dtype="Number" placeholder="0" value="${fs.transform?.rotation ?? "0"}">
-        </div>
-        <div class="form-group">
-            <label>Texture Skew <span class="units">(Degrees)</span></label>
-            <div class="form-fields">
-                <label>X</label>
-                <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.skew.x" data-dtype="Number" placeholder="0" value="${fs.transform?.skew?.x ?? "0"}">
-                <label>Y</label>
-                <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.skew.y" data-dtype="Number" placeholder="0" value="${fs.transform?.skew?.y ?? "0"}">
-            </div>
-        </div>
-    `);
 
     $.find(`select[name="fontFamily"]`).closest(".form-group").after(`
         <div class="form-group">
