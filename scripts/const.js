@@ -2,6 +2,16 @@ export const MODULE_ID = "advanced-drawing-tools";
 export const MODULE_NAME = "Advanced Drawing Tools";
 export const DEFAULT_FLAGS = Object.freeze({
     [`flags.${MODULE_ID}.invisible`]: false,
+    [`flags.${MODULE_ID}.fillStyle.texture.height`]: null,
+    [`flags.${MODULE_ID}.fillStyle.texture.width`]: null,
+    [`flags.${MODULE_ID}.fillStyle.transform.pivot.x`]: 0,
+    [`flags.${MODULE_ID}.fillStyle.transform.pivot.y`]: 0,
+    [`flags.${MODULE_ID}.fillStyle.transform.position.x`]: 0,
+    [`flags.${MODULE_ID}.fillStyle.transform.position.y`]: 0,
+    [`flags.${MODULE_ID}.fillStyle.transform.rotation`]: 0,
+    [`flags.${MODULE_ID}.fillStyle.transform.scale.x`]: 1,
+    [`flags.${MODULE_ID}.fillStyle.transform.scale.y`]: 1,
+    [`flags.${MODULE_ID}.lineStyle.dash`]: null,
     [`flags.${MODULE_ID}.textStyle.align`]: null,
     [`flags.${MODULE_ID}.textStyle.dropShadow`]: true,
     [`flags.${MODULE_ID}.textStyle.dropShadowAlpha`]: 1,
