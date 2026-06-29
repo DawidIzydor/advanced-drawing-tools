@@ -1,284 +1,47 @@
 import { MODULE_ID } from "./const.js";
 
+// Detect PIXI.Graphics drawing API at module load.
+// In PixiJS v8 with the fluent API, fill()/stroke() are instance methods.
+// In PixiJS v7 (and some v8 builds without the fluent shim), fill/stroke are
+// not methods; instead style is set with lineStyle()/beginFill()/endFill().
+const _tmpGfx = new PIXI.Graphics();
+export const _PIXI_FLUENT_FILL = typeof _tmpGfx.fill === "function";
+export const _PIXI_LEGACY_FILL = !_PIXI_FLUENT_FILL && typeof _tmpGfx.beginFill === "function";
+_tmpGfx.destroy();
+
 Hooks.on("refreshDrawing", drawing => {
     drawing._refreshEditMode();
 });
 
-Hooks.once("libWrapper.Ready", () => {
-    const getInteractionData = (event) => event.interactionData
-    const getOriginalData = (drawing, event) => event.interactionData.originalData
-    const setOriginalData = (drawing, event) => event.interactionData.originalData = drawing.document.toObject();
-    const setRestoreOriginalData = (drawing, event, value) => event.interactionData.restoreOriginalData = value;
-    const refreshSize = (drawing) => drawing.renderFlags.set({ refreshSize: true });
-    const isDraggingHandle = (drawing, event) => event.interactionData.dragHandle;
+// Transforms a canvas-space point into the drawing's local (unrotated, origin-at-top-left) space.
+export function canvasToLocal(canvasPoint, { x, y, rotation, shape: { width, height } }) {
+    const local = new PIXI.Point(canvasPoint.x, canvasPoint.y);
+    new PIXI.Matrix()
+        .translate(-width / 2, -height / 2)
+        .rotate(Math.toRadians(rotation || 0))
+        .translate(x + width / 2, y + height / 2)
+        .applyInverse(local, local);
+    return local;
+}
 
+// Returns a mutable shape update object seeded from the given document data.
+export function shapeUpdateFrom({ x, y, shape: { width, height, points } }) {
+    return { x, y, shape: { width, height, points: Array.from(points) } };
+}
 
-    libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype.activateListeners`, function (wrapped, ...args) {
-        wrapped(...args);
+// Applies a handle's local point into the update: EdgeHandle inserts a new vertex; PointHandle moves an existing one.
+export function applyHandlePoint(update, handle, localPoint) {
+    if (handle instanceof EdgeHandle) {
+        update.shape.points.splice(handle.index * 2, 0, localPoint.x, localPoint.y);
+    } else {
+        update.shape.points[handle.index * 2] = localPoint.x;
+        update.shape.points[handle.index * 2 + 1] = localPoint.y;
+    }
+}
 
-        this.frame.handle.off("pointerup").on("pointerup", this._onHandleMouseUp.bind(this));
-    }, libWrapper.WRAPPER);
-    
+foundry.canvas.placeables.Drawing.prototype._editMode = false;
 
-    libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype._onHandleHoverIn`, function (event) {
-        if (this._dragHandle) {
-            return;
-        }
-
-        const handle = event.target;
-        const interactionData = getInteractionData(event);
-
-        if (interactionData) {
-            interactionData.handle = handle;
-        }
-
-        if (handle instanceof PointHandle || handle instanceof EdgeHandle) {
-            handle._hover = true;
-            handle.refresh();
-        } else if (handle) {
-            handle.scale.set(1.5, 1.5);
-        }
-    }, libWrapper.OVERRIDE);
-
-    libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype._onHandleHoverOut`, function (event) {
-        const handle = getInteractionData(event).handle;
-
-        if (handle instanceof PointHandle || handle instanceof EdgeHandle) {
-            handle._hover = false;
-            handle.refresh();
-        } else if (handle) {
-            handle.scale.set(1.0, 1.0);
-        }
-    }, libWrapper.OVERRIDE);
-
-
-    libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype._onHandleDragStart`, function (event) {
-        const handle = event.target;
-
-        if (handle instanceof PointHandle || handle instanceof EdgeHandle) {
-            if (!this.document.locked) {
-                this._dragHandle = true;
-                handle._hover = true;
-                handle.refresh();
-                this._editHandle = handle;
-            } else {
-                this._editHandle = null;
-            }
-        } else {
-            if (!this.document.locked) {
-                this._dragHandle = true;
-            }
-        }
-    }, libWrapper.OVERRIDE);
-    
-
-    libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype._onDragLeftStart`, function (wrapped, event) {
-        if (!isDraggingHandle(this, event)) {
-            return wrapped(event);
-        }
-
-        setOriginalData(this, event);
-
-        let { handle, destination } = getInteractionData(event);
-
-        if (this._editHandle) {
-            handle = this._editHandle;
-        }
-
-        let update;
-
-        if (handle instanceof EdgeHandle) {
-            const point = new PIXI.Point(destination.x, destination.y);
-            const matrix = new PIXI.Matrix();
-            const { x, y, rotation, shape: { width, height, points } } = this.document;
-
-            matrix.translate(-width / 2, -height / 2);
-            matrix.rotate(Math.toRadians(rotation || 0));
-            matrix.translate(x + width / 2, y + height / 2);
-            matrix.applyInverse(point, point);
-
-            update = { x, y, shape: { width, height, points: Array.from(points) } };
-            update.shape.points.splice(handle.index * 2, 0, point.x, point.y);
-        } else if (handle instanceof foundry.canvas.containers.ResizeHandle) {
-            return wrapped(event);
-        }
-
-        if (update) {
-            this.document.updateSource(update);
-            refreshSize(this);
-        }
-    }, libWrapper.MIXED);
-
-    libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype._onHandleDragMove`, function (event) {
-        let { handle, destination, origin } = getInteractionData(event);
-
-        if (this._editHandle) {
-            handle = this._editHandle;
-        }
-
-        const originalEvent = event.data.originalEvent;
-        let update;
-
-        if (!originalEvent.shiftKey) {
-            destination = this.layer.getSnappedPoint(destination);
-        }
-
-        // Pan the canvas if the drag event approaches the edge
-        canvas._onDragCanvasPan(originalEvent);
-
-        if (handle instanceof PointHandle || handle instanceof EdgeHandle) {
-            const matrix = new PIXI.Matrix();
-            const point = new PIXI.Point(destination.x, destination.y);
-            const { x, y, rotation, shape: { width, height, points } } = getOriginalData(this, event);
-
-            matrix.translate(-width / 2, -height / 2);
-            matrix.rotate(Math.toRadians(rotation || 0));
-            matrix.translate(x + width / 2, y + height / 2);
-            matrix.applyInverse(point, point);
-
-            update = { x, y, shape: { width, height, points: Array.from(points) } };
-
-            if (handle instanceof EdgeHandle) {
-                update.shape.points.splice(handle.index * 2, 0, point.x, point.y);
-            } else {
-                update.shape.points[handle.index * 2] = point.x;
-                update.shape.points[handle.index * 2 + 1] = point.y;
-            }
-        } else {
-            // Update Drawing dimensions
-            const dx = destination.x - origin.x;
-            const dy = destination.y - origin.y;
-
-            update = ((drawing, original, dx, dy) => (() => foundry.canvas?.placeables?.Drawing)().rescaleDimensions(original, dx, dy))(this, getOriginalData(this, event), dx, dy);
-        }
-
-        try {
-            this.document.updateSource(update);
-            refreshSize(this);
-        } catch (err) { }
-    }, libWrapper.OVERRIDE);
-
-    libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype._onHandleDragDrop`, function (event) {
-        let { handle, destination, origin } = getInteractionData(event);
-
-        if (this._editHandle) {
-            handle = this._editHandle;
-        }
-
-        const originalEvent = event.data.originalEvent;
-        let update;
-
-        setRestoreOriginalData(this, event, false);
-
-        if (!originalEvent.shiftKey) {
-            destination = this.layer.getSnappedPoint(destination);
-        }
-
-        if (handle instanceof PointHandle || handle instanceof EdgeHandle) {
-            this._dragHandle = false;
-            handle._hover = false;
-            handle.refresh();
-            this._editHandle = null;
-
-            const matrix = new PIXI.Matrix();
-            const point = new PIXI.Point(destination.x, destination.y);
-            const { x, y, rotation, shape: { width, height, points } } = getOriginalData(this, event);
-
-            matrix.translate(-width / 2, -height / 2);
-            matrix.rotate(Math.toRadians(rotation || 0));
-            matrix.translate(x + width / 2, y + height / 2);
-            matrix.applyInverse(point, point);
-
-            update = { x, y, shape: { width, height, points: Array.from(points) } };
-
-            if (handle instanceof EdgeHandle) {
-                update.shape.points.splice(handle.index * 2, 0, point.x, point.y);
-            } else {
-                update.shape.points[handle.index * 2] = point.x;
-                update.shape.points[handle.index * 2 + 1] = point.y;
-            }
-
-            update = ((drawing, original, dx, dy) => (() => foundry.canvas?.placeables?.Drawing)().rescaleDimensions(original, dx, dy))(this, update, 0, 0);
-        } else {
-            // Update Drawing dimensions
-            const dx = destination.x - origin.x;
-            const dy = destination.y - origin.y;
-
-            update = ((drawing, original, dx, dy) => (() => foundry.canvas?.placeables?.Drawing)().rescaleDimensions(original, dx, dy))(this, getOriginalData(this, event), dx, dy);
-        }
-
-        return this.document.update(update, { diff: false });
-    }, libWrapper.OVERRIDE);
-
-
-    libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype._onClickLeft`, function (wrapped, event) {
-        this._editHandle = null;
-
-        if (this._editHandles?.points.children.includes(event.target)
-            || this._editHandles?.edges.children.includes(event.target)) {
-            event.interactionData.dragHandle = true;
-            event.stopPropagation();
-            this._editHandle = event.target;
-            return;
-        }
-
-        return wrapped(event);
-    }, libWrapper.MIXED);
-    
-
-    libWrapper.register(MODULE_ID, `foundry.canvas.placeables.Drawing.prototype._onClickRight`, function (wrapped, event) {
-        let handle = getInteractionData(event).handle;
-
-        if (this._editHandle) {
-            handle = this._editHandle;
-        }
-
-        if ((handle instanceof PointHandle || handle instanceof EdgeHandle) && handle._hover) {
-            event.stopPropagation();
-            this._dragHandle = false;
-            handle._hover = false;
-            handle.refresh();
-            this._editHandle = null;
-
-            const { x, y, rotation, shape: { width, height, points } } = this.document;
-            let update = { x, y, shape: { width, height, points: Array.from(points) } };
-
-            if (handle instanceof EdgeHandle) {
-                const origin = getInteractionData(event).origin;
-                const matrix = new PIXI.Matrix();
-                const point = new PIXI.Point(origin.x, origin.y);
-
-                matrix.translate(-width / 2, -height / 2);
-                matrix.rotate(Math.toRadians(rotation || 0));
-                matrix.translate(x + width / 2, y + height / 2);
-                matrix.applyInverse(point, point);
-
-                update.shape.points[(handle.index * 2 + points.length - 2) % points.length] = point.x;
-                update.shape.points[(handle.index * 2 + points.length - 1) % points.length] = point.y;
-            }
-
-            update.shape.points.splice(handle.index * 2, 2);
-            update = ((drawing, original, dx, dy) => (() => foundry.canvas?.placeables?.Drawing)().rescaleDimensions(original, dx, dy))(this, update, 0, 0);
-
-            return this.document.update(update, { diff: false });
-        }
-
-        return wrapped(event);
-    }, libWrapper.MIXED);
-
-
-    (() => foundry.canvas?.placeables?.Drawing)().prototype._onHandleMouseUp = function (event) {
-        if (!getOriginalData(this, event)) {
-            this._dragHandle = false;
-            this._editHandle = null;
-        }
-    };
-    
-});
-
-(() => foundry.canvas?.placeables?.Drawing)().prototype._editMode = false;
-
-(() => foundry.canvas?.placeables?.Drawing)().prototype._toggleEditMode = function (active) {
+foundry.canvas.placeables.Drawing.prototype._toggleEditMode = function (active) {
     this.layer.placeables.forEach(drawing => {
         if (drawing !== this && drawing._editMode) {
             drawing._editMode = false;
@@ -298,12 +61,14 @@ Hooks.once("libWrapper.Ready", () => {
     }
 };
 
-(() => foundry.canvas?.placeables?.Drawing)().prototype._editHandles = null;
+foundry.canvas.placeables.Drawing.prototype._editHandles = null;
+foundry.canvas.placeables.Drawing.prototype._hoveredEditHandle = null;
+foundry.canvas.placeables.Drawing.prototype._activeEditHandle = null;
 
-(() => foundry.canvas?.placeables?.Drawing)().prototype._refreshEditMode = function () {
+foundry.canvas.placeables.Drawing.prototype._refreshEditMode = function () {
     const document = this.document;
 
-    if (this._editMode && this.layer.active && !document._source.locked && document.shape.type === "p") {
+    if (this._editMode && !document.locked && document.shape.type === (CONST.DRAWING_SHAPES?.POLYGON ?? "p")) {
         let editHandles = this._editHandles;
 
         if (!editHandles || editHandles.destroyed) {
@@ -312,27 +77,34 @@ Hooks.once("libWrapper.Ready", () => {
             editHandles.points = editHandles.addChild(new PIXI.Container());
         }
 
-        const activateListeners = (handle) => {
-            handle.off("pointerover").off("pointerout")
-            .on("pointerover", this._onHandleHoverIn.bind(this))
-            .on("pointerout", this._onHandleHoverOut.bind(this));
-            handle.eventMode = "static";
-        };
-
-        const points = document.shape.points;
+        // In Foundry v14 the Drawing container may be at world origin (0, 0) with
+        // the document position applied elsewhere in the render pipeline. Detect this
+        // by comparing the Drawing's effective world origin against document.(x,y).
+        // If they differ, apply the document transform to editHandles so handles land
+        // on the polygon vertices. Re-applied every refresh so moves stay in sync.
+        const { x: docX, y: docY, rotation, shape: { width, height, points } } = document;
+        const effectiveX = this.x - (this.pivot?.x ?? 0);
+        const effectiveY = this.y - (this.pivot?.y ?? 0);
+        if (Math.abs(effectiveX - docX) > 0.5 || Math.abs(effectiveY - docY) > 0.5) {
+            editHandles.position.set(docX + width / 2, docY + height / 2);
+            editHandles.pivot.set(width / 2, height / 2);
+            editHandles.rotation = Math.toRadians(rotation || 0);
+        } else {
+            editHandles.position.set(0, 0);
+            editHandles.pivot.set(0, 0);
+            editHandles.rotation = 0;
+        }
 
         for (let i = editHandles.edges.children.length; i <= points.length; i++) {
-            activateListeners(editHandles.edges.addChild(new EdgeHandle(this, i)));
+            editHandles.edges.addChild(new EdgeHandle(this, i));
         }
-
-        for (let i = editHandles.points.children.length; i <= points.length; i++) {
-            activateListeners(editHandles.points.addChild(new PointHandle(this, i)));
-        }
-
         if (editHandles.edges.children.length > points.length) {
             editHandles.edges.removeChildren(points.length).forEach(c => c.destroy({ children: true }));
         }
 
+        for (let i = editHandles.points.children.length; i <= points.length; i++) {
+            editHandles.points.addChild(new PointHandle(this, i));
+        }
         if (editHandles.points.children.length > points.length) {
             editHandles.points.removeChildren(points.length).forEach(c => c.destroy({ children: true }));
         }
@@ -341,16 +113,20 @@ Hooks.once("libWrapper.Ready", () => {
         editHandles.points.children.forEach(h => h.refresh());
     } else {
         this._editMode = false;
+        this._activeEditHandle = null;
+        this._hoveredEditHandle = null;
 
         if (this._editHandles) {
             this._editHandles.destroy({ children: true });
             this._editHandles = null;
         }
     }
-}
+};
 
-class PointHandle extends PIXI.Graphics {
+export class PointHandle extends PIXI.Graphics {
     _hover = false;
+    _dragging = false;
+    _originalData = null;
 
     constructor(object, index) {
         super();
@@ -359,12 +135,115 @@ class PointHandle extends PIXI.Graphics {
         this.index = index;
         this.cursor = "pointer";
         this.eventMode = "static";
+
+        this.on("pointerover", this._onPointerOver, this);
+        this.on("pointerout", this._onPointerOut, this);
+        this.on("pointerdown", this._onPointerDown, this);
+        this.on("globalpointermove", this._onPointerMove, this);
+        this.on("pointerup", this._onPointerUp, this);
+        this.on("pointerupoutside", this._onPointerUp, this);
+        this.on("rightdown", this._onRightDown, this);
+    }
+
+    _onPointerOver() {
+        if (this.object._activeEditHandle) return;
+        this._hover = true;
+        this.refresh();
+        this.object._hoveredEditHandle = this;
+    }
+
+    _onPointerOut() {
+        this._hover = false;
+        this.refresh();
+        if (this.object._hoveredEditHandle === this) this.object._hoveredEditHandle = null;
+    }
+
+    _onPointerDown(event) {
+        if (event.button !== 0) return;
+        event.stopPropagation();
+        if (this.object.document.locked) return;
+
+        this._originalData = this.object.document.toObject();
+        this._dragging = true;
+        this._hover = true;
+        this.object._activeEditHandle = this;
+        this.refresh();
+    }
+
+    _onPointerMove(event) {
+        if (!this._dragging || this.destroyed) return;
+
+        const worldPoint = event.getLocalPosition
+            ? event.getLocalPosition(canvas.stage)
+            : canvas.stage.toLocal(event.global);
+        const snapped = event.shiftKey ? worldPoint : this.object.layer.getSnappedPoint(worldPoint);
+
+        const localPoint = canvasToLocal(snapped, this._originalData);
+        const update = shapeUpdateFrom(this._originalData);
+        applyHandlePoint(update, this, localPoint);
+
+        try {
+            this.object.document.updateSource(update);
+            this.object.renderFlags.set({ refreshShape: true });
+        } catch (err) { }
+    }
+
+    _onPointerUp(event) {
+        if (!this._dragging || this.destroyed) return;
+
+        const worldPoint = event.getLocalPosition
+            ? event.getLocalPosition(canvas.stage)
+            : canvas.stage.toLocal(event.global);
+        const snapped = event.shiftKey ? worldPoint : this.object.layer.getSnappedPoint(worldPoint);
+
+        const localPoint = canvasToLocal(snapped, this._originalData);
+        let update = shapeUpdateFrom(this._originalData);
+        applyHandlePoint(update, this, localPoint);
+        update = this.object._rescaleDimensions(update, 0, 0);
+
+        this._endDrag();
+        this.object.document.update(update, { diff: false });
+    }
+
+    _onRightDown(event) {
+        if (this.destroyed) return;
+        event.stopPropagation();
+
+        if (this._dragging) {
+            this._cancelDrag();
+            return;
+        }
+
+        if (!this._hover) return;
+        const { x, y, shape: { width, height, points } } = this.object.document;
+        if (points.length <= 6) return; // refuse delete below 3 vertices
+
+        let update = shapeUpdateFrom({ x, y, shape: { width, height, points } });
+        update.shape.points.splice(this.index * 2, 2);
+        update = this.object._rescaleDimensions(update, 0, 0);
+        this.object.document.update(update, { diff: false });
+    }
+
+    _endDrag() {
+        this._dragging = false;
+        this._originalData = null;
+        if (this.object._activeEditHandle === this) this.object._activeEditHandle = null;
+        if (!this.destroyed) {
+            this._hover = false;
+            this.refresh();
+        }
+    }
+
+    _cancelDrag() {
+        if (!this._dragging || !this._originalData) return;
+        const originalData = this._originalData;
+        this._endDrag();
+        this.object.document.updateSource(shapeUpdateFrom(originalData));
+        this.object.renderFlags.set({ refreshShape: true });
     }
 
     refresh() {
-        if (this.destroyed) {
-            return;
-        }
+        if (this.destroyed) return;
 
         const document = this.object.document;
         const points = document.shape.points;
@@ -372,7 +251,6 @@ class PointHandle extends PIXI.Graphics {
 
         if (i >= points.length) {
             this.visible = false;
-
             return;
         }
 
@@ -380,54 +258,183 @@ class PointHandle extends PIXI.Graphics {
         const y = points[i + 1];
 
         let lw = 2;
+        if (canvas.dimensions.size > 150) lw = 4;
+        else if (canvas.dimensions.size > 100) lw = 3;
 
-        if (canvas.dimensions.size > 150) {
-            lw = 4;
-        } else if (canvas.dimensions.size > 100) {
-            lw = 3;
+        const r = lw * (this._hover ? 4 : 3);
+
+        this.clear();
+        if (_PIXI_FLUENT_FILL) {
+            (this.circle ?? this.drawCircle).call(this, 0, 0, r)
+                .fill({ color: 0xFFFFFF, alpha: 1.0 })
+                .stroke({ width: lw, color: 0x000000, alpha: 1.0 });
+        } else if (_PIXI_LEGACY_FILL) {
+            this.lineStyle(lw, 0x000000, 1.0).beginFill(0xFFFFFF, 1.0);
+            (this.circle ?? this.drawCircle).call(this, 0, 0, r);
+            this.endFill();
         }
 
-        this.clear()
-            .lineStyle(lw, 0x000000, 1.0)
-            .beginFill(0xFFFFFF, 1.0)
-            .drawCircle(0, 0, lw * (this._hover ? 4 : 3))
-            .endFill();
         this.position.set(x, y);
         this.visible = true;
     }
 }
 
-class EdgeHandle extends PIXI.Graphics {
+export class EdgeHandle extends PIXI.Graphics {
     _hover = false;
+    _dragging = false;
+    _originalData = null;
+    _insertedIndex = null;
 
     constructor(object, index) {
         super();
 
         this.object = object;
         this.index = index;
-
-        if (index === 0) {
-            this._lineShader = new PIXI.smooth.DashLineShader();
-        } else {
-            this._lineShader = null;
-        }
-
         this.cursor = "pointer";
         this.eventMode = "static";
+
+        this.on("pointerover", this._onPointerOver, this);
+        this.on("pointerout", this._onPointerOut, this);
+        this.on("pointerdown", this._onPointerDown, this);
+        this.on("globalpointermove", this._onPointerMove, this);
+        this.on("pointerup", this._onPointerUp, this);
+        this.on("pointerupoutside", this._onPointerUp, this);
+        this.on("rightdown", this._onRightDown, this);
+    }
+
+    _onPointerOver() {
+        if (this.object._activeEditHandle) return;
+        this._hover = true;
+        this.refresh();
+        this.object._hoveredEditHandle = this;
+    }
+
+    _onPointerOut() {
+        this._hover = false;
+        this.refresh();
+        if (this.object._hoveredEditHandle === this) this.object._hoveredEditHandle = null;
+    }
+
+    _onPointerDown(event) {
+        if (event.button !== 0) return;
+        event.stopPropagation();
+        if (this.object.document.locked) return;
+
+        this._originalData = this.object.document.toObject();
+        this._dragging = true;
+        this._insertedIndex = this.index;
+        this.object._activeEditHandle = this;
+
+        // Insert the new vertex at the click position
+        const worldPoint = event.getLocalPosition
+            ? event.getLocalPosition(canvas.stage)
+            : canvas.stage.toLocal(event.global);
+        const snapped = event.shiftKey ? worldPoint : this.object.layer.getSnappedPoint(worldPoint);
+        const localPoint = canvasToLocal(snapped, this._originalData);
+
+        const { x, y, shape: { width, height, points } } = this._originalData;
+        const insertUpdate = shapeUpdateFrom({ x, y, shape: { width, height, points } });
+        insertUpdate.shape.points.splice(this._insertedIndex * 2, 0, localPoint.x, localPoint.y);
+
+        try {
+            this.object.document.updateSource(insertUpdate);
+            this.object.renderFlags.set({ refreshShape: true });
+        } catch (err) { }
+    }
+
+    _onPointerMove(event) {
+        if (!this._dragging || this.destroyed) return;
+
+        const worldPoint = event.getLocalPosition
+            ? event.getLocalPosition(canvas.stage)
+            : canvas.stage.toLocal(event.global);
+        const snapped = event.shiftKey ? worldPoint : this.object.layer.getSnappedPoint(worldPoint);
+        const localPoint = canvasToLocal(snapped, this._originalData);
+
+        const { x, y, shape: { width, height, points } } = this._originalData;
+        const update = shapeUpdateFrom({ x, y, shape: { width, height, points } });
+        update.shape.points.splice(this._insertedIndex * 2, 0, localPoint.x, localPoint.y);
+
+        try {
+            this.object.document.updateSource(update);
+            this.object.renderFlags.set({ refreshShape: true });
+        } catch (err) { }
+    }
+
+    _onPointerUp(event) {
+        if (!this._dragging || this.destroyed) return;
+
+        const worldPoint = event.getLocalPosition
+            ? event.getLocalPosition(canvas.stage)
+            : canvas.stage.toLocal(event.global);
+        const snapped = event.shiftKey ? worldPoint : this.object.layer.getSnappedPoint(worldPoint);
+        const localPoint = canvasToLocal(snapped, this._originalData);
+
+        const { x, y, shape: { width, height, points } } = this._originalData;
+        let update = shapeUpdateFrom({ x, y, shape: { width, height, points } });
+        update.shape.points.splice(this._insertedIndex * 2, 0, localPoint.x, localPoint.y);
+        update = this.object._rescaleDimensions(update, 0, 0);
+
+        this._endDrag();
+        this.object.document.update(update, { diff: false });
+    }
+
+    _onRightDown(event) {
+        if (this.destroyed) return;
+        event.stopPropagation();
+
+        if (this._dragging) {
+            this._cancelDrag();
+            return;
+        }
+
+        if (!this._hover) return;
+        const { x, y, rotation, shape: { width, height, points } } = this.object.document;
+        if (points.length <= 6) return; // refuse delete below 3 vertices
+
+        let update = shapeUpdateFrom({ x, y, shape: { width, height, points } });
+
+        // Move the edge's start point to the right-click origin before splicing out this vertex.
+        const worldPoint = event.getLocalPosition
+            ? event.getLocalPosition(canvas.stage)
+            : canvas.stage.toLocal(event.global);
+        const localPoint = canvasToLocal(worldPoint, { x, y, rotation, shape: { width, height } });
+        update.shape.points[(this.index * 2 + points.length - 2) % points.length] = localPoint.x;
+        update.shape.points[(this.index * 2 + points.length - 1) % points.length] = localPoint.y;
+
+        update.shape.points.splice(this.index * 2, 2);
+        update = this.object._rescaleDimensions(update, 0, 0);
+        this.object.document.update(update, { diff: false });
+    }
+
+    _endDrag() {
+        this._dragging = false;
+        this._originalData = null;
+        this._insertedIndex = null;
+        if (this.object._activeEditHandle === this) this.object._activeEditHandle = null;
+        if (!this.destroyed) {
+            this._hover = false;
+            this.refresh();
+        }
+    }
+
+    _cancelDrag() {
+        if (!this._dragging || !this._originalData) return;
+        const originalData = this._originalData;
+        this._endDrag();
+        this.object.document.updateSource(shapeUpdateFrom(originalData));
+        this.object.renderFlags.set({ refreshShape: true });
     }
 
     refresh() {
-        if (this.destroyed) {
-            return;
-        }
+        if (this.destroyed) return;
 
         const document = this.object.document;
         const points = document.shape.points;
         const i = this.index * 2;
 
-        if (i >= points.length || i === 0 && document.fillType === CONST.DRAWING_FILL_TYPES.NONE) {
+        if (i >= points.length || (i === 0 && document.fillType === CONST.DRAWING_FILL_TYPES.NONE)) {
             this.visible = false;
-
             return;
         }
 
@@ -438,42 +445,76 @@ class EdgeHandle extends PIXI.Graphics {
         const by = points[i + 1];
 
         let lw = 2;
-
-        if (canvas.dimensions.size > 150) {
-            lw = 4;
-        } else if (canvas.dimensions.size > 100) {
-            lw = 3;
-        }
-
-        if (this._lineShader) {
-            this._lineShader.uniforms.dash = lw * 1.618;
-            this._lineShader.uniforms.gap = lw;
-        }
+        if (canvas.dimensions.size > 150) lw = 4;
+        else if (canvas.dimensions.size > 100) lw = 3;
 
         const cx = (ax + bx) / 2;
         const cy = (ay + by) / 2;
         const w = Math.hypot(ax - bx, ay - by);
         const h = lw * (this._hover ? 4 / 3 : 1) * 2;
 
-        this.clear()
-            .beginFill(0xFFFFFF, 1.0, true)
-            .drawRect(-w / 2, -h / 2, w, h)
-            .endFill()
-            .lineStyle({ width: lw, color: 0x000000, alpha: 1.0, shader: this._lineShader })
-            .moveTo(-w / 2, -h / 2).lineTo(w / 2, -h / 2)
-            .moveTo(-w / 2, +h / 2).lineTo(w / 2, +h / 2);
+        this.clear();
+        if (_PIXI_FLUENT_FILL) {
+            (this.rect ?? this.drawRect).call(this, -w / 2, -h / 2, w, h)
+                .fill({ color: 0xFFFFFF, alpha: 1.0 });
+            if (this.index === 0) {
+                const dashLen = lw * 1.618;
+                const gapLen = lw;
+                drawEdgeDashes(this, -w / 2, -h / 2, w / 2, -h / 2, dashLen, gapLen, lw);
+                drawEdgeDashes(this, -w / 2, +h / 2, w / 2, +h / 2, dashLen, gapLen, lw);
+            } else {
+                this.moveTo(-w / 2, -h / 2).lineTo(w / 2, -h / 2)
+                    .moveTo(-w / 2, +h / 2).lineTo(w / 2, +h / 2)
+                    .stroke({ width: lw, color: 0x000000, alpha: 1.0 });
+            }
+        } else if (_PIXI_LEGACY_FILL) {
+            this.lineStyle(0).beginFill(0xFFFFFF, 1.0);
+            (this.rect ?? this.drawRect).call(this, -w / 2, -h / 2, w, h);
+            this.endFill();
+            if (this.index === 0) {
+                const dashLen = lw * 1.618;
+                const gapLen = lw;
+                drawEdgeDashes(this, -w / 2, -h / 2, w / 2, -h / 2, dashLen, gapLen, lw);
+                drawEdgeDashes(this, -w / 2, +h / 2, w / 2, +h / 2, dashLen, gapLen, lw);
+            } else {
+                this.lineStyle(lw, 0x000000, 1.0);
+                this.moveTo(-w / 2, -h / 2).lineTo(w / 2, -h / 2);
+                this.moveTo(-w / 2, +h / 2).lineTo(w / 2, +h / 2);
+            }
+        }
+
         this.position.set(cx, cy);
         this.rotation = Math.atan2(by - ay, bx - ax);
         this.visible = true;
         this.hitArea = new PIXI.Rectangle(-w / 2 - lw / 2, -h / 2 - lw / 2, w + lw, h + lw);
     }
+}
 
-    destroy(options) {
-        if (this._lineShader) {
-            this._lineShader.destroy();
-            this._lineShader = null;
+function drawEdgeDashes(g, x1, y1, x2, y2, dash, gap, lineWidth) {
+    const len = Math.hypot(x2 - x1, y2 - y1);
+    if (len === 0) return;
+    const dx = (x2 - x1) / len;
+    const dy = (y2 - y1) / len;
+
+    // In legacy mode the line style must be set before the path operations.
+    if (_PIXI_LEGACY_FILL) g.lineStyle(lineWidth, 0x000000, 1.0);
+
+    let pos = 0;
+    let drawing = true;
+
+    while (pos < len - 0.001) {
+        const step = Math.min(drawing ? dash : gap, len - pos);
+        if (drawing) {
+            const sx = x1 + dx * pos;
+            const sy = y1 + dy * pos;
+            const ex = x1 + dx * (pos + step);
+            const ey = y1 + dy * (pos + step);
+            g.moveTo(sx, sy).lineTo(ex, ey);
         }
-
-        super.destroy(options);
+        pos += step;
+        drawing = !drawing;
     }
+
+    // In fluent mode the path must be explicitly stroked; legacy renders automatically.
+    if (_PIXI_FLUENT_FILL) g.stroke({ width: lineWidth, color: 0x000000, alpha: 1.0 });
 }

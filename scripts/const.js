@@ -11,8 +11,6 @@ export const DEFAULT_FLAGS = Object.freeze({
     [`flags.${MODULE_ID}.fillStyle.transform.rotation`]: 0,
     [`flags.${MODULE_ID}.fillStyle.transform.scale.x`]: 1,
     [`flags.${MODULE_ID}.fillStyle.transform.scale.y`]: 1,
-    [`flags.${MODULE_ID}.fillStyle.transform.skew.x`]: 0,
-    [`flags.${MODULE_ID}.fillStyle.transform.skew.y`]: 0,
     [`flags.${MODULE_ID}.lineStyle.dash`]: null,
     [`flags.${MODULE_ID}.textStyle.align`]: null,
     [`flags.${MODULE_ID}.textStyle.dropShadow`]: true,

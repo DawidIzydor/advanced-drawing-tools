@@ -14,11 +14,12 @@
   ],
   "version": "3.1.0",
   "compatibility": {
-    "minimum": "13",
-    "verified": "13"
+    "minimum": "14",
+    "verified": "14"
   },
   "esmodules": [
-    "scripts/index.js"
+    "scripts/index.js",
+    "scripts/tests/edit-mode.test.js"
   ],
   "relationships": {
     "requires": [

@@ -2,8 +2,8 @@ import { MODULE_ID } from "./const.js";
 import { saveValue, stringifyValue } from "./utils.js";
 
 Hooks.once("libWrapper.Ready", () => {
-    libWrapper.register(MODULE_ID, "foundry.applications.api.DocumentSheetV2.prototype._prepareSubmitData", 
-        
+    try {
+    libWrapper.register(MODULE_ID, "foundry.applications.api.DocumentSheetV2.prototype._prepareSubmitData",
     function (wrapped, event, form, formData, updateData) {
         // 1) Start with the prepared data from the base sheet
         const data = wrapped(event, form, formData, updateData);
@@ -15,23 +15,20 @@ Hooks.once("libWrapper.Ready", () => {
         }
 
         // ---- lineStyle.dash handling ----
-        // Read the UI state from the provided form element
-        const dashToggle = form?.querySelector(`input.${MODULE_ID}--lineStyle-dash`);
-        
-        // Ensure nested structure exists
         data.flags = data.flags || {};
         data.flags[MODULE_ID] = data.flags[MODULE_ID] || {};
         data.flags[MODULE_ID].lineStyle = data.flags[MODULE_ID].lineStyle || {};
-        
-        if (dashToggle?.checked) {
-            // Ensure we have a 2-length numeric array; coerce strings -> numbers with sane defaults
-            const a = data.flags[MODULE_ID].lineStyle.dash;
-            const d0 = Array.isArray(a) ? a[0] : undefined;
-            const d1 = Array.isArray(a) ? a[1] : undefined;
-            data.flags[MODULE_ID].lineStyle.dash = [
-            Number(d0) || 8,
-            Number(d1) || 5
-            ];
+
+        const dashEnabled = data.flags[MODULE_ID].lineStyle.dashEnabled;
+        const d0 = data.flags[MODULE_ID].lineStyle.dashSegment;
+        const d1 = data.flags[MODULE_ID].lineStyle.dashGap;
+
+        delete data.flags[MODULE_ID].lineStyle.dashEnabled;
+        delete data.flags[MODULE_ID].lineStyle.dashSegment;
+        delete data.flags[MODULE_ID].lineStyle.dashGap;
+
+        if (dashEnabled) {
+            data.flags[MODULE_ID].lineStyle.dash = [Number(d0) || 8, Number(d1) || 5];
         } else {
             data.flags[MODULE_ID].lineStyle.dash = null;
         }
@@ -101,6 +98,9 @@ Hooks.once("libWrapper.Ready", () => {
 
         return data;
         }, libWrapper.WRAPPER);
+    } catch(e) {
+        console.warn(`${MODULE_ID} | _prepareSubmitData wrapper failed (API may have changed in v14):`, e);
+    }
 });
 
 // Helper function to handle both jQuery and HTMLElement with fallback to jQuery when available
@@ -352,71 +352,64 @@ Hooks.on("renderDrawingConfig", (app, root, data) => {
         <textarea name="text" style="font-family: var(--font-primary); min-height: calc(var(--form-field-height) + 3px); height: 100; border-color: var(--color-border-light-tertiary);">${document.text ?? ""}</textarea>
     `);
 
-    $.find(`input[name="strokeWidth"]`).closest(".form-group").after(`
-        <div class="form-group">
-            <label>Dashed <span class="units">(Pixels)</span></label>
-            <div class="form-fields">
-                <label>Dash</label>
-                <input type="number" name="flags.${MODULE_ID}.lineStyle.dash" min="0.1" step="0.1" placeholder="8" value="${ls.dash?.[0] ?? "8"}">
-                <label>Gap</label>
-                <input type="number" name="flags.${MODULE_ID}.lineStyle.dash" min="0.1" step="0.1" placeholder="5" value="${ls.dash?.[1] ?? "5"}">
-                &nbsp;&nbsp;&nbsp;
-                <input type="checkbox" name="flags.${MODULE_ID}.lineStyle.dashEnabled" class="${MODULE_ID}--lineStyle-dash" ${ls.dash ? "checked" : ""}>
-            </div>
-        </div>
-    `);
+    // Dashed stroke UI hidden — broken in v14/PixiJS v8 (see GitHub issue #8)
+    // $.find(`input[name="strokeWidth"]`).closest(".form-group").after(`
+    //     <div class="form-group">
+    //         <label>Dashed <span class="units">(Pixels)</span></label>
+    //         <div class="form-fields">
+    //             <label>Dash</label>
+    //             <input type="number" name="flags.${MODULE_ID}.lineStyle.dashSegment" min="0.1" step="0.1" placeholder="8" value="${ls.dash?.[0] ?? "8"}">
+    //             <label>Gap</label>
+    //             <input type="number" name="flags.${MODULE_ID}.lineStyle.dashGap" min="0.1" step="0.1" placeholder="5" value="${ls.dash?.[1] ?? "5"}">
+    //             &nbsp;&nbsp;&nbsp;
+    //             <input type="checkbox" name="flags.${MODULE_ID}.lineStyle.dashEnabled" ${ls.dash ? "checked" : ""}>
+    //         </div>
+    //     </div>
+    // `);
 
-    $.find(`div[data-tab="fill"]`).append(`
-        <div class="form-group">
-            <label>Texture Size <span class="units">(Pixels or %)</span></label>
-            <div class="form-fields">
-                <label>X</label>
-                <input type="text" name="flags.${MODULE_ID}.fillStyle.texture.width" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="Width" value="${stringifyValue(fs.texture?.width) ?? ""}">
-                <label>Y</label>
-                <input type="text" name="flags.${MODULE_ID}.fillStyle.texture.height" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="Height" value="${stringifyValue(fs.texture?.height) ?? ""}">
-            </div>
-        </div>
-        <div class="form-group">
-            <label>Texture Position <span class="units">(Pixels or %)</span></label>
-            <div class="form-fields">
-                <label>X</label>
-                <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.position.x" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="0px" value="${stringifyValue(fs.transform?.position?.x) ?? "0px"}">
-                <label>Y</label>
-                <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.position.y" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="0px" value="${stringifyValue(fs.transform?.position?.y) ?? "0px"}">
-            </div>
-        </div>
-        <div class="form-group">
-            <label>Texture Pivot <span class="units">(Pixels or %)</span></label>
-            <div class="form-fields">
-                <label>X</label>
-                <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.pivot.x" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="0px" value="${stringifyValue(fs.transform?.pivot?.x) ?? "0px"}">
-                <label>Y</label>
-                <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.pivot.y" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="0px" value="${stringifyValue(fs.transform?.pivot?.y) ?? "0px"}">
-            </div>
-        </div>
-        <div class="form-group">
-            <label>Texture Scale</label>
-            <div class="form-fields">
-                <label>X</label>
-                <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.scale.x" data-dtype="Number" placeholder="1" value="${fs.transform?.scale?.x ?? "1"}">
-                <label>Y</label>
-                <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.scale.y" data-dtype="Number" placeholder="1" value="${fs.transform?.scale?.y ?? "1"}">
-            </div>
-        </div>
-        <div class="form-group">
-            <label>Texture Rotation <span class="units">(Degrees)</span></label>
-            <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.rotation" data-dtype="Number" placeholder="0" value="${fs.transform?.rotation ?? "0"}">
-        </div>
-        <div class="form-group">
-            <label>Texture Skew <span class="units">(Degrees)</span></label>
-            <div class="form-fields">
-                <label>X</label>
-                <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.skew.x" data-dtype="Number" placeholder="0" value="${fs.transform?.skew?.x ?? "0"}">
-                <label>Y</label>
-                <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.skew.y" data-dtype="Number" placeholder="0" value="${fs.transform?.skew?.y ?? "0"}">
-            </div>
-        </div>
-    `);
+    // Fill pattern/texture transform UI hidden — broken in v14/PixiJS v8 (see GitHub issue #9)
+    // $.find(`div[data-tab="fill"]`).append(`
+    //     <div class="form-group">
+    //         <label>Texture Size <span class="units">(Pixels or %)</span></label>
+    //         <div class="form-fields">
+    //             <label>X</label>
+    //             <input type="text" name="flags.${MODULE_ID}.fillStyle.texture.width" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="Width" value="${stringifyValue(fs.texture?.width) ?? ""}">
+    //             <label>Y</label>
+    //             <input type="text" name="flags.${MODULE_ID}.fillStyle.texture.height" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="Height" value="${stringifyValue(fs.texture?.height) ?? ""}">
+    //         </div>
+    //     </div>
+    //     <div class="form-group">
+    //         <label>Texture Position <span class="units">(Pixels or %)</span></label>
+    //         <div class="form-fields">
+    //             <label>X</label>
+    //             <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.position.x" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="0px" value="${stringifyValue(fs.transform?.position?.x) ?? "0px"}">
+    //             <label>Y</label>
+    //             <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.position.y" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="0px" value="${stringifyValue(fs.transform?.position?.y) ?? "0px"}">
+    //         </div>
+    //     </div>
+    //     <div class="form-group">
+    //         <label>Texture Pivot <span class="units">(Pixels or %)</span></label>
+    //         <div class="form-fields">
+    //             <label>X</label>
+    //             <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.pivot.x" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="0px" value="${stringifyValue(fs.transform?.pivot?.x) ?? "0px"}">
+    //             <label>Y</label>
+    //             <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.pivot.y" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="0px" value="${stringifyValue(fs.transform?.pivot?.y) ?? "0px"}">
+    //         </div>
+    //     </div>
+    //     <div class="form-group">
+    //         <label>Texture Scale</label>
+    //         <div class="form-fields">
+    //             <label>X</label>
+    //             <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.scale.x" data-dtype="Number" placeholder="1" value="${fs.transform?.scale?.x ?? "1"}">
+    //             <label>Y</label>
+    //             <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.scale.y" data-dtype="Number" placeholder="1" value="${fs.transform?.scale?.y ?? "1"}">
+    //         </div>
+    //     </div>
+    //     <div class="form-group">
+    //         <label>Texture Rotation <span class="units">(Degrees)</span></label>
+    //         <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.rotation" data-dtype="Number" placeholder="0" value="${fs.transform?.rotation ?? "0"}">
+    //     </div>
+    // `);
 
     $.find(`select[name="fontFamily"]`).closest(".form-group").after(`
         <div class="form-group">
@@ -471,7 +464,7 @@ Hooks.on("renderDrawingConfig", (app, root, data) => {
         </div>
         <div class="form-group">
             <label>Line Height <span class="units">(Pixels)</span></label>
-            <input type="number" name="flags.${MODULE_ID}.textStyle.lineHeight" min="0" step="0.1" placeholder="normal" value="${ts.lineHeight ?? "normal"}">
+            <input type="number" name="flags.${MODULE_ID}.textStyle.lineHeight" min="0" step="0.1" placeholder="normal" value="${(ts.lineHeight != null && ts.lineHeight !== "normal") ? ts.lineHeight : ""}">
         </div> 
         <div class="form-group">
             <label>Word Wrap Width <span class="units">(Pixels or %)</span></label>

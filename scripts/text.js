@@ -31,7 +31,7 @@ Hooks.on("refreshDrawing", drawing => {
         dropShadowDistance: ts?.dropShadowDistance ?? 0,
         fill: ts?.fill?.length ? [document.textColor || "#ffffff"].concat(ts.fill.map(c => c || "#ffffff")) : document.textColor || "#ffffff",
         fillGradientStops: ts?.fillGradientStops ?? [],
-        fillGradientType: ts?.fillGradientType ?? PIXI.TEXT_GRADIENT.LINEAR_VERTICAL,
+        fillGradientType: ts?.fillGradientType ?? 0, // 0 = LINEAR_VERTICAL (PIXI.TEXT_GRADIENT removed in Pixi v8)
         fontStyle: ts?.fontStyle || "normal",
         fontVariant: ts?.fontVariant || "normal",
         fontWeight: ts?.fontWeight || "normal",

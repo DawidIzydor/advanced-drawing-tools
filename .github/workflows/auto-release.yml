@@ -47,11 +47,18 @@ jobs:
         with:
           tag: "v${{ steps.version.outputs.version }}"
           name: "${{ steps.version.outputs.version }}"
-          body: "Automated release from branch creation"
+          bodyFile: "RELEASE_NOTES.md"
           artifacts: "module.zip, module.json"
           allowUpdates: true
           makeLatest: true
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Clear release notes
+        run: |
+          echo "_Release notes for next version — add changes here before publishing._" > RELEASE_NOTES.md
+          git add RELEASE_NOTES.md
+          git commit -m "chore: clear release notes after v${{ steps.version.outputs.version }}"
+          git push origin HEAD:main
 
       - name: Release to Foundry VTT
         run: |

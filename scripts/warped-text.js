@@ -1,13 +1,22 @@
 export class WarpedText extends PIXI.Mesh {
     constructor(text) {
         const geometry = new WarpedTextGeometry(0, 0, 2, 2);
-        const material = new PIXI.MeshMaterial(new PIXI.Texture(text.texture.baseTexture));
+
+        // Pixi v8: BaseTexture renamed to source; MeshMaterial renamed to MeshSimpleMaterial
+        const textureSource = text.texture.source ?? text.texture.baseTexture;
+        const sharedTexture = textureSource
+            ? new PIXI.Texture({ source: textureSource })
+            : text.texture;
+        const MaterialClass = PIXI.MeshSimpleMaterial ?? PIXI.MeshMaterial;
+        const material = new MaterialClass(sharedTexture);
 
         super(geometry, material);
 
         this.text = text;
 
-        if (this.texture.baseTexture.valid) {
+        const isValid = (text.texture.source ?? text.texture.baseTexture)?.valid
+            ?? text.texture.valid;
+        if (isValid) {
             this.textureUpdated();
         }
 
@@ -67,22 +76,17 @@ export class WarpedText extends PIXI.Mesh {
         super.updateTransform();
     }
 
-    getBounds(skipUpdate, rect) {
+    getBounds(skipUpdate) {
         this.text.updateText(true);
 
-        if (this.text._textureID === -1) {
-            skipUpdate = false;
-        }
-
-        return super.getBounds(skipUpdate, rect);
+        return super.getBounds(skipUpdate);
     }
 
-    getLocalBounds(rect) {
-        this.updateText(true);
+    getLocalBounds() {
+        this.text.updateText(true);
 
-        return super.getLocalBounds(this, rect);
+        return super.getLocalBounds();
     }
-
 
     destroy(options) {
         this.texture.off("update", this.textureUpdated, this);

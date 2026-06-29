@@ -1,5 +1,9 @@
 import { DEFAULT_FLAGS, MODULE_ID } from "./const.js";
 
+function isModuleFlag(key) {
+    return key.startsWith(`flags.${MODULE_ID}.`);
+}
+
 export function parseValue(value) {
     if (value == null) {
         return null;
@@ -34,15 +38,11 @@ export function calculateValue(value, base) {
         return null;
     }
 
-    const unit = value.unit;
-
-    value = value.value;
-
-    if (unit === "%") {
-        return base * (value / 100);
+    if (value.unit === "%") {
+        return base * (value.value / 100);
     }
 
-    return value;
+    return value.value;
 }
 
 export function hexToRgba(hex, opacity = 1) {
@@ -67,15 +67,11 @@ export function stringifyValue(value) {
         return null;
     }
 
-    const unit = value.unit;
-
-    value = value.value;
-
-    if (unit === "%") {
-        return `${value}%`;
+    if (value.unit === "%") {
+        return `${value.value}%`;
     }
 
-    return `${value}px`;
+    return `${value.value}px`;
 }
 
 export function saveValue(value) {
@@ -85,116 +81,114 @@ export function saveValue(value) {
         return null;
     }
 
-    const unit = value.unit;
+    // Percent values are stored as strings ("50%"); plain pixel values are stored as numbers.
+    if (value.unit === "%") {
+        return `${value.value}%`;
+    }
 
-    value = value.value;
+    return value.value;
+}
 
-    if (unit === "%") {
-        return `${value}%`;
+// Normalize a single flag value to a consistent type for storage.
+// Strings are lowercased and trimmed; values that look like CSS lengths are saved via saveValue.
+function normalizeFlag(value, defaultValue) {
+    value = value ?? null;
+
+    if (parseValue(defaultValue)) {
+        value = saveValue(value);
+    } else if (typeof value === "string") {
+        value = value ? value.trim().toLowerCase() : null;
     }
 
     return value;
 }
 
 export function cleanData(data, { inplace = false, deletionKeys = false, keepOthers = true, partial = false }) {
+    const flatData = foundry.utils.flattenObject(data);
     let newData = {};
 
-    function walk(obj, path = []) {
-        for (const [key, value] of Object.entries(obj)) {
-            const fullPath = [...path, key].join(".");
+    // Phase 1: Seed deletion keys so Foundry will remove any flag that is not explicitly re-set
+    // below. In a partial update we only delete paths present in the incoming data, not every
+    // known default flag.
+    if (deletionKeys || inplace) {
+        const keysToErase = (partial ? [] : Object.keys(DEFAULT_FLAGS)).concat(Object.keys(flatData));
 
-            if (!(fullPath.startsWith(`flags.${MODULE_ID}.`) && !fullPath.includes(".-="))) {
-                if (keepOthers && !inplace) {
-                    setPath(newData, [...path, key], value);
-                }
-                continue;
-            }
+        for (const key of keysToErase) {
+            if (!isModuleFlag(key)) continue;
 
-            if (!(fullPath in DEFAULT_FLAGS)) {
-                continue;
-            }
+            const pathParts = key.split(".");
+            // For partial updates only add the leaf's immediate parent deletion key;
+            // for full updates add a deletion key at every ancestor level.
+            const startDepth = partial ? pathParts.length - 1 : 1;
 
-            const defaultValue = DEFAULT_FLAGS[fullPath];
-            const normalizeValue = v => {
-                v = v ?? null;
-
-                if (parseValue(defaultValue)) {
-                    v = saveValue(v);
-                } else if (typeof v === "string") {
-                    if (!v) {
-                        v = null;
-                    } else {
-                        v = v.trim().toLowerCase();
-                    }
-                }
-                return v;
-            };
-
-            let finalValue;
-            if (Array.isArray(value)) {
-                finalValue = value.map(normalizeValue);
-            } else {
-                finalValue = normalizeValue(value);
-            }
-
-            if (finalValue != null && finalValue !== defaultValue && !finalValue.equals?.(defaultValue)) {
-                setPath(newData, [...path, key], finalValue);
-
-                if (deletionKeys || inplace) {
-                    for (let i = 1; i < fullPath.split(".").length; i++) {
-                        deletePath(newData, fullPath.split(".").slice(0, i).concat([`-=${fullPath.split(".")[i]}`]));
-                    }
-                }
-            } else if (!deletionKeys) {
-                setPath(newData, [...path, key], foundry.utils.deepClone(defaultValue));
+            for (let i = startDepth; i < pathParts.length; i++) {
+                newData[pathParts.slice(0, i + 1).join(".")] = foundry.data.operators.ForcedDeletion;
             }
         }
     }
 
-    function setPath(obj, pathArr, val) {
-        let target = obj;
-        for (let i = 0; i < pathArr.length - 1; i++) {
-            if (!(pathArr[i] in target)) target[pathArr[i]] = {};
-            target = target[pathArr[i]];
+    // Phase 2: Normalize each flag value and copy it into newData.
+    // When a non-default value is stored, remove its ancestor deletion keys so Foundry
+    // does not accidentally delete the parent object that now contains the value.
+    for (let [key, value] of Object.entries(flatData)) {
+        if (!isModuleFlag(key)) {
+            if (keepOthers && !inplace) newData[key] = value;
+            continue;
         }
-        target[pathArr[pathArr.length - 1]] = val;
+
+        if (!(key in DEFAULT_FLAGS)) continue;
+
+        const defaultValue = DEFAULT_FLAGS[key];
+
+        if (Array.isArray(value)) {
+            value = value.map(item => normalizeFlag(item, defaultValue));
+        } else {
+            value = normalizeFlag(value, defaultValue);
+        }
+
+        const isDefaultValue = value == null || value === defaultValue || value.equals?.(defaultValue);
+
+        if (!isDefaultValue) {
+            newData[key] = value;
+
+            // Cancel the ForcedDeletion entries for this path — the value is being set, not erased.
+            if (deletionKeys || inplace) {
+                const pathParts = key.split(".");
+                for (let i = 1; i < pathParts.length; i++) {
+                    delete newData[pathParts.slice(0, i + 1).join(".")];
+                }
+            }
+        } else if (!deletionKeys) {
+            // Not using deletion-key mode: write the default explicitly so the consumer
+            // always receives a complete, predictable data set.
+            newData[key] = foundry.utils.deepClone(defaultValue);
+        }
     }
 
-    function deletePath(obj, pathArr) {
-        let target = obj;
-        for (let i = 0; i < pathArr.length - 1; i++) {
-            if (!(pathArr[i] in target)) return;
-            target = target[pathArr[i]];
-        }
-        delete target[pathArr[pathArr.length - 1]];
-    }
-
-    walk(data);
-
+    // Phase 3: Remove child entries made redundant by a parent ForcedDeletion.
+    // e.g. if "fillStyle" is ForcedDeletion there is no need to also carry "fillStyle.texture.width".
     if (deletionKeys || inplace) {
         for (const key in newData) {
-            if (!key.startsWith(`flags.${MODULE_ID}.`) && !key.startsWith(`flags.-=${MODULE_ID}`)) {
-                continue;
-            }
-            const split = key.split(".");
-            if (!split[split.length - 1].startsWith("-=")) continue;
-
-            const prefix = `${split.slice(0, -1).join(".")}.${split[split.length - 1].slice(2)}.`;
-            delete newData[prefix.slice(0, -1)];
-
+            if (newData[key] !== foundry.data.operators.ForcedDeletion) continue;
+            if (!key.startsWith(`flags.${MODULE_ID}`)) continue;
+            const childPrefix = `${key}.`;
             for (const otherKey in newData) {
-                if (otherKey.startsWith(prefix)) {
-                    delete newData[otherKey];
-                }
+                if (otherKey.startsWith(childPrefix)) delete newData[otherKey];
             }
         }
     }
+
+    // Phase 4: Expand the flat key map back to a nested object.
+    // Sorting longer keys first ensures children are processed before parents during expansion.
+    newData = foundry.utils.expandObject(
+        Object.fromEntries(Object.entries(newData).sort((a, b) => b[0].length - a[0].length))
+    );
 
     if (!inplace) {
         return newData;
     }
 
-    foundry.utils.mergeObject(data, newData, { performDeletions: true });
+    foundry.utils.mergeObject(data, newData, { applyOperators: true });
 
     if (deletionKeys) {
         foundry.utils.mergeObject(data, newData);
