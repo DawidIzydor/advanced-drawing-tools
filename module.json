@@ -1,39 +1,39 @@
 {
-  "id": "advanced-drawing-tools",
-  "title": "Advanced Drawing Tools",
-  "description": "Improved drawing tools with additional line, fill, and text styles.",
-  "authors": [
-    {
-      "name": "dev7355608",
-      "email": "dev7355608@gmail.com"
+    "id": "advanced-drawing-tools",
+    "title": "Advanced Drawing Tools",
+    "description": "Improved drawing tools with additional line, fill, and text styles.",
+    "authors": [
+        {
+            "name": "dev7355608",
+            "email": "dev7355608@gmail.com"
+        },
+        {
+            "name": "Dawid Izydor",
+            "email": "admin@dawid-izydor.pl"
+        }
+    ],
+    "version": "14.0.0",
+    "compatibility": {
+        "minimum": "14",
+        "verified": "14"
     },
-    {
-      "name": "Dawid Izydor",
-      "email": "admin@dawid-izydor.pl"
-    }
-  ],
-  "version": "3.1.0",
-  "compatibility": {
-    "minimum": "14",
-    "verified": "14"
-  },
-  "esmodules": [
-    "scripts/index.js",
-    "scripts/tests/edit-mode.test.js"
-  ],
-  "relationships": {
-    "requires": [
-      {
-        "id": "lib-wrapper",
-        "type": "module"
-      }
-    ]
-  },
-  "url": "https://github.com/DawidIzydor/advanced-drawing-tools",
-  "manifest": "https://raw.githubusercontent.com/DawidIzydor/advanced-drawing-tools/main/module.json",
-  "download": "https://github.com/DawidIzydor/advanced-drawing-tools/releases/download/3.1.0/module.zip",
-  "changelog": "https://github.com/DawidIzydor/advanced-drawing-tools/releases/tag/3.1.0",
-  "bugs": "https://github.com/DawidIzydor/advanced-drawing-tools/issues",
-  "readme": "https://raw.githubusercontent.com/DawidIzydor/advanced-drawing-tools/main/README.md",
-  "license": "https://raw.githubusercontent.com/DawidIzydor/advanced-drawing-tools/main/LICENSE"
+    "esmodules": [
+        "scripts/index.js",
+        "scripts/tests/edit-mode.test.js"
+    ],
+    "relationships": {
+        "requires": [
+            {
+                "id": "lib-wrapper",
+                "type": "module"
+            }
+        ]
+    },
+    "url": "https://github.com/DawidIzydor/advanced-drawing-tools",
+    "manifest": "https://github.com/DawidIzydor/advanced-drawing-tools/releases/latest/download/module.json",
+    "download": "https://github.com/DawidIzydor/advanced-drawing-tools/releases/download/v14.0.0/module.zip",
+    "changelog": "https://github.com/DawidIzydor/advanced-drawing-tools/releases/tag/v14.0.0",
+    "bugs": "https://github.com/DawidIzydor/advanced-drawing-tools/issues",
+    "readme": "https://raw.githubusercontent.com/DawidIzydor/advanced-drawing-tools/main/README.md",
+    "license": "https://raw.githubusercontent.com/DawidIzydor/advanced-drawing-tools/main/LICENSE"
 }
