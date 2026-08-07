@@ -30,7 +30,7 @@
         ]
     },
     "url": "https://github.com/DawidIzydor/advanced-drawing-tools",
-    "manifest": "https://github.com/DawidIzydor/advanced-drawing-tools/releases/latest/download/module.json",
+    "manifest": "https://raw.githubusercontent.com/DawidIzydor/advanced-drawing-tools/main/module.json",
     "download": "https://github.com/DawidIzydor/advanced-drawing-tools/releases/download/v14.0.0/module.zip",
     "changelog": "https://github.com/DawidIzydor/advanced-drawing-tools/releases/tag/v14.0.0",
     "bugs": "https://github.com/DawidIzydor/advanced-drawing-tools/issues",
