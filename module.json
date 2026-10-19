@@ -12,7 +12,7 @@
             "email": "admin@dawid-izydor.pl"
         }
     ],
-    "version": "14.0.0",
+    "version": "14.0.1",
     "compatibility": {
         "minimum": "14",
         "verified": "14"
