@@ -3,7 +3,7 @@ import { WarpedText } from "./warped-text.js";
 import { calculateValue } from "./utils.js";
 import { hexToRgba } from "./utils.js";
 
-Hooks.on("refreshDrawing", drawing => {
+export function refreshDrawingText(drawing) {
     const text = drawing.text;
 
     if (!text) {
@@ -84,4 +84,6 @@ Hooks.on("refreshDrawing", drawing => {
     }else{
         drawing.text.renderable = true;
     }
-});
+}
+
+Hooks.on("refreshDrawing", refreshDrawingText);

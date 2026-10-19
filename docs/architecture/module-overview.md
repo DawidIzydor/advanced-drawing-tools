@@ -253,7 +253,7 @@ PIXI mesh that renders a `PIXI.Text` object warped along a circular arc.
 
 ### `WarpedText extends PIXI.Mesh`
 
-Wraps a `text: PIXI.Text` object. Shares the text's texture (via `BaseTexture`/`source`, handling the Pixi v7→v8 rename). Uses `WarpedTextGeometry` as the mesh geometry and `MeshSimpleMaterial` / `MeshMaterial` (v7→v8 rename).
+Wraps a `text: PIXI.Text` object. Clones the text's texture so the mesh can share its backing texture without taking ownership of the original. Uses `WarpedTextGeometry` as the mesh geometry and `MeshSimpleMaterial` / `MeshMaterial` (v7→v8 rename).
 
 Key members:
 

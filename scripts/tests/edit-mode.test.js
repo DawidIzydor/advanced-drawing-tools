@@ -1,5 +1,6 @@
 import { canvasToLocal, shapeUpdateFrom, applyHandlePoint, PointHandle, EdgeHandle,
          _PIXI_FLUENT_FILL, _PIXI_LEGACY_FILL } from "../edit-mode.js";
+import { refreshDrawingText } from "../text.js";
 
 Hooks.once("quenchReady", (quench) => {
 
@@ -322,5 +323,51 @@ Hooks.once("quenchReady", (quench) => {
             });
         });
     }, { displayName: "ADT | Handle lifecycle" });
+
+    quench.registerBatch("advanced-drawing-tools.text-rendering", (context) => {
+        const { describe, it, assert } = context;
+
+        describe("text styling and arc rendering", () => {
+            it("applies gradient styles and renders arc text without replacing the text texture", () => {
+                const drawing = new PIXI.Container();
+                const text = new PIXI.Text("Warped text", { fill: "#ffffff", fontSize: 24 });
+                const textStyle = {
+                    fill: ["#ff0000"],
+                    fillGradientStops: [0, 1],
+                    fillGradientType: 1,
+                    arc: 90
+                };
+                const document = {
+                    fontSize: 24,
+                    hidden: false,
+                    rotation: 0,
+                    shape: { width: 200, height: 80 },
+                    textAlpha: 1,
+                    textColor: "#ffffff",
+                    getFlag: () => textStyle
+                };
+                drawing.text = text;
+                drawing.document = document;
+                drawing.addChild(text);
+                text.updateText(true);
+
+                try {
+                    assert.doesNotThrow(() => refreshDrawingText(drawing));
+                    assert.deepEqual(text.style.fill, ["#ffffff", "#ff0000"]);
+                    assert.deepEqual(text.style.fillGradientStops, [0, 1]);
+                    assert.equal(text.style.fillGradientType, 1);
+                    assert.isFalse(text.renderable);
+                    assert.closeTo(drawing._warpedText.arc, Math.PI / 2, 0.001);
+
+                    textStyle.arc = 0;
+                    assert.doesNotThrow(() => refreshDrawingText(drawing));
+                    assert.isTrue(text.renderable);
+                    assert.isTrue(text.texture.valid);
+                } finally {
+                    drawing.destroy({ children: true });
+                }
+            });
+        });
+    }, { displayName: "ADT | Text rendering" });
 
 });

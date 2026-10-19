@@ -1,12 +1,7 @@
 export class WarpedText extends PIXI.Mesh {
     constructor(text) {
         const geometry = new WarpedTextGeometry(0, 0, 2, 2);
-
-        // Pixi v8: BaseTexture renamed to source; MeshMaterial renamed to MeshSimpleMaterial
-        const textureSource = text.texture.source ?? text.texture.baseTexture;
-        const sharedTexture = textureSource
-            ? new PIXI.Texture({ source: textureSource })
-            : text.texture;
+        const sharedTexture = text.texture.clone();
         const MaterialClass = PIXI.MeshSimpleMaterial ?? PIXI.MeshMaterial;
         const material = new MaterialClass(sharedTexture);
 
