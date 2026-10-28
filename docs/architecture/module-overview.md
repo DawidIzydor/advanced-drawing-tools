@@ -12,7 +12,8 @@ scripts/
 ├── convert.js        — Drawing._convertToPolygon(), approximateEllipse()
 ├── edit-mode.js      — polygon vertex/edge edit handles, drag wrappers
 ├── hud.js            — HUD buttons: edit mode, flip H/V
-├── shape.js          — refreshDrawing: dashed stroke overlay, texture transform
+├── fill-style.js     — pattern fill matrix, legacy (v13) fill flag detection and migration
+├── shape.js          — refreshDrawing: dashed stroke overlay, fill migration; _getFillStyle: texture transform
 ├── text.js           — refreshDrawing: text style application, arc warping
 ├── precise-text.js   — PreciseText resolution override (Pixi v8 compat)
 └── warped-text.js    — WarpedText / WarpedTextGeometry PIXI mesh for arc text
@@ -65,17 +66,17 @@ The central data-normalisation function. Called in `preCreateDrawing` and `preUp
 ```js
 cleanData(data, {
     inplace:     false,   // mutate data in place vs return a new object
-    deletionKeys: false,  // emit Foundry "-=key" deletion keys for unset flags
+    deletionKeys: false,  // emit Foundry ForcedDeletion operators for unset flags
     keepOthers:  true,    // pass through non-module keys
     partial:     false,   // treat data as a partial update (fewer deletion keys)
 })
 ```
 
 Four phases:
-1. Seed deletion keys so Foundry removes any previously stored flag that is no longer set.
-2. Normalize each recognised flag value via `normalizeFlag` (string trim/lowercase for strings; `saveValue` for CSS-length defaults). Skip values that equal their `DEFAULT_FLAGS` default.
+1. Seed deletion keys (`new foundry.data.operators.ForcedDeletion()` instances) so Foundry removes any previously stored flag that is no longer set.
+2. Normalize each recognised flag value via `normalizeFlag` (string trim/lowercase for strings; `saveValue` for CSS-length defaults). Skip values that equal their `DEFAULT_FLAGS` default, except for `PERSISTENT_FLAGS` (`fillStyle.version`), which are always stored.
 3. Remove child deletion keys made redundant by a parent deletion key.
-4. Expand the flat key map back to a nested object with `foundry.utils.expandObject`.
+4. Expand the flat key map back to a nested object with `foundry.utils.expandObject`; when `inplace`, merge it into `data` with `mergeObject` without `applyOperators` (unless `deletionKeys` is off), so the `ForcedDeletion` instances replace the values they target and reach the server. Applying the operators first would remove those keys from `data`, after which `mergeObject` skips the deletions.
 
 ---
 
@@ -100,7 +101,7 @@ Injected controls by tab:
 |-----|---------------|
 | Position | Invisible checkbox |
 | Line (after strokeWidth) | Dash length + Gap + enable checkbox |
-| Fill | Texture size, position, pivot, scale, rotation, skew |
+| Fill | Texture size, position, pivot, scale, rotation, skew; hidden `fillStyle.version` marker |
 | Text (after fontFamily) | Font style, variant, weight |
 | Text (after fontSize) | Leading, letter spacing, line height, word wrap width |
 | Text (around textColor) | Multi-stop gradient colours + stops, gradient type |
@@ -213,7 +214,9 @@ Adds buttons to the Drawing HUD (`renderDrawingHUD` hook):
 
 `drawDashedPolygon(g, points, dash, gap, lineWidth, color, alpha, closed)` — state-machine dash renderer that tracks remaining dash/gap across polygon segment boundaries.
 
-**Texture fill transform** — active when `fillType === PATTERN` and `fillStyle` flags are present. Computes a `PIXI.Matrix` from the stored transform (position, pivot, scale, rotation, skew) and `fillStyle.texture` size, then applies it to the fill sprite's `tileTransform` (v14 `TilingSprite`).
+**Texture fill transform** — a `WRAPPER` on `Drawing.prototype._getFillStyle`, active when `fillType === PATTERN`, the fill style has a texture, and `fillStyle` has non-default texture size or transform values. `getFillStyleMatrix(fs, texture, shape)` (from `fill-style.js`) supplies a `PIXI.Matrix` mapping texture pixels → shape-local pixels. The wrapper sets it as the fill style's `matrix` (composed with any matrix Foundry already supplies); PixiJS inverts the matrix for the UVs (v7 in `beginTextureFill`, v8 in `fill`). It also sets `textureSpace: "global"`, which PixiJS v8 needs to keep the texture at its pixel size instead of stretching it to the shape bounds; v7 (shipped with Foundry v14) ignores it.
+
+**Legacy fill migration** — `fillStyle` flags without `version: 2` come from v13, where the module wrote its matrix into Pixi v7's already-inverted `graphicsData` fill matrix, so it mapped drawing → texture and every field worked backwards. Such flags render with the inverted matrix (identical to v13). When the drawing is refreshed, the values are updated with `migrateFillStyle(...)`. This is the inverse transform, decomposed into texture size (absorbing the scale; `%` sizes stay `%`), position (px), rotation and skew X, with pivot 0, scale ±1 and `version: 2`. `DrawingConfig` shows migrated values for legacy flags and submits the version marker via a hidden input. `fillStyle.version` is a persistent flag with default `2`, so `cleanData` in `preCreateDrawing` gives every new drawing `version: 2`, while existing drawings without it keep the legacy semantics. Drawings created as part of a scene (imports, adventures) don't fire `preCreateDrawing`, so if they don't have `version: 2`, their legacy flags are migrated on first render.
 
 ---
 

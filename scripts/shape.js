@@ -1,5 +1,5 @@
 import { MODULE_ID } from "./const.js";
-import { calculateValue } from "./utils.js";
+import { getFillStyleMatrix, hasFillTransform, isLegacyFillStyle, migrateFillStyle } from "./fill-style.js";
 import { _PIXI_FLUENT_FILL, _PIXI_LEGACY_FILL } from "./edit-mode.js";
 
 // When a dashed overlay is active, zero the native strokeWidth before Foundry
@@ -27,6 +27,32 @@ Hooks.once("libWrapper.Ready", () => {
         },
         libWrapper.MIXED,
     );
+
+    // Pattern fills are drawn from this._getFillStyle(), so the texture transform is injected
+    // into the fill style Foundry builds. The matrix maps texture pixels to shape-local pixels;
+    // Pixi v7 (beginTextureFill) and v8 (fill) both invert it for the UVs.
+    libWrapper.register(
+        MODULE_ID,
+        "foundry.canvas.placeables.Drawing.prototype._getFillStyle",
+        function (wrapped, ...args) {
+            const style = wrapped(...args);
+            const doc = this.document;
+            const fs = doc.getFlag(MODULE_ID, "fillStyle");
+
+            if (!style?.texture || doc.fillType !== CONST.DRAWING_FILL_TYPES.PATTERN || !hasFillTransform(fs)) {
+                return style;
+            }
+
+            const matrix = getFillStyleMatrix(fs, style.texture, doc.shape);
+            style.matrix = style.matrix ? style.matrix.clone().append(matrix) : matrix;
+            // Pixi v8 stretches the texture to the shape bounds unless the texture space is
+            // global, which keeps it at its pixel size like Pixi v7. Pixi v7 ignores this.
+            style.textureSpace = "global";
+
+            return style;
+        },
+        libWrapper.WRAPPER,
+    );
 });
 
 Hooks.on("refreshDrawing", drawing => {
@@ -42,40 +68,38 @@ Hooks.on("refreshDrawing", drawing => {
     }
 
     _refreshDashOverlay(drawing);
-
-    if (document.fillType === CONST.DRAWING_FILL_TYPES.PATTERN) {
-        const fillSprite = drawing.fill ?? drawing.mesh;
-        if (fillSprite) {
-            const texture = drawing.texture ?? fillSprite.texture;
-            const fs = document.getFlag(MODULE_ID, "fillStyle");
-            const transform = fs?.transform;
-
-            let scaleW = 1;
-            let scaleH = 1;
-            if (texture && fs?.texture) {
-                scaleW = calculateValue(fs.texture.width,  document.shape.width)  / texture.width;
-                scaleH = calculateValue(fs.texture.height, document.shape.height) / texture.height;
-                scaleW = scaleW || scaleH || 1;
-                scaleH = scaleH || scaleW || 1;
-            }
-
-            const tileW = scaleW * (texture?.width  ?? 1);
-            const tileH = scaleH * (texture?.height ?? 1);
-
-            const posX = calculateValue(transform?.position?.x, tileW) ?? 0;
-            const posY = calculateValue(transform?.position?.y, tileH) ?? 0;
-            const pivX = calculateValue(transform?.pivot?.x,    tileW) ?? 0;
-            const pivY = calculateValue(transform?.pivot?.y,    tileH) ?? 0;
-            const userScaleX = transform?.scale?.x ?? 1;
-            const userScaleY = transform?.scale?.y ?? 1;
-            const rot = (transform?.rotation ?? 0) / 180 * Math.PI;
-
-            if (fillSprite.tileScale)    fillSprite.tileScale.set(scaleW * userScaleX, scaleH * userScaleY);
-            if (fillSprite.tilePosition) fillSprite.tilePosition.set(posX - pivX, posY - pivY);
-            if ("tileRotation" in fillSprite) fillSprite.tileRotation = rot;
-        }
-    }
+    _migrateFillStyle(drawing);
 });
+
+// Legacy (v13) fill flags render correctly as they are, but with an active GM they get rewritten
+// to the current semantics once the texture is loaded and its size is known.
+// Each drawing is migrated at most once per session, so a migration that doesn't stick can't loop.
+const _migratedFillStyles = new Set();
+
+function _migrateFillStyle(drawing) {
+    const doc = drawing.document;
+
+    if (drawing.isPreview || _migratedFillStyles.has(doc.uuid) || game.user !== game.users.activeGM) {
+        return;
+    }
+
+    const fs = doc.getFlag(MODULE_ID, "fillStyle");
+    const texture = drawing.texture;
+
+    if (doc.fillType !== CONST.DRAWING_FILL_TYPES.PATTERN || !texture?.width || !isLegacyFillStyle(fs)) {
+        return;
+    }
+
+    const migrated = migrateFillStyle(fs, texture, doc.shape);
+
+    if (!migrated) {
+        return;
+    }
+
+    _migratedFillStyles.add(doc.uuid);
+    doc.update({ [`flags.${MODULE_ID}.fillStyle`]: migrated })
+        .catch(error => console.warn(`${MODULE_ID} | Failed to migrate fill style of ${doc.uuid}:`, error));
+}
 
 function _refreshDashOverlay(drawing) {
     const doc = drawing.document;

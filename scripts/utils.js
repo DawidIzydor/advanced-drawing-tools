@@ -1,4 +1,4 @@
-import { DEFAULT_FLAGS, MODULE_ID } from "./const.js";
+import { DEFAULT_FLAGS, MODULE_ID, PERSISTENT_FLAGS } from "./const.js";
 
 function isModuleFlag(key) {
     return key.startsWith(`flags.${MODULE_ID}.`);
@@ -107,9 +107,8 @@ export function cleanData(data, { inplace = false, deletionKeys = false, keepOth
     const flatData = foundry.utils.flattenObject(data);
     let newData = {};
 
-    // Phase 1: Seed deletion keys so Foundry will remove any flag that is not explicitly re-set
-    // below. In a partial update we only delete paths present in the incoming data, not every
-    // known default flag.
+    // Phase 1: Seed deletion keys so Foundry will remove any flag that is not explicitly re-set below.
+    // In a partial update we only delete paths present in the incoming data, not every known default flag.
     if (deletionKeys || inplace) {
         const keysToErase = (partial ? [] : Object.keys(DEFAULT_FLAGS)).concat(Object.keys(flatData));
 
@@ -122,8 +121,16 @@ export function cleanData(data, { inplace = false, deletionKeys = false, keepOth
             const startDepth = partial ? pathParts.length - 1 : 1;
 
             for (let i = startDepth; i < pathParts.length; i++) {
-                newData[pathParts.slice(0, i + 1).join(".")] = foundry.data.operators.ForcedDeletion;
+                newData[pathParts.slice(0, i + 1).join(".")] = new foundry.data.operators.ForcedDeletion();
             }
+        }
+    }
+
+    // Full (non-partial) data is a new document: give it the persistent flags it lacks.
+    // Partial updates of existing documents don't get them.
+    if (!partial) {
+        for (const key of PERSISTENT_FLAGS) {
+            flatData[key] ??= DEFAULT_FLAGS[key];
         }
     }
 
@@ -146,15 +153,18 @@ export function cleanData(data, { inplace = false, deletionKeys = false, keepOth
             value = normalizeFlag(value, defaultValue);
         }
 
-        const isDefaultValue = value == null || value === defaultValue || value.equals?.(defaultValue);
+        const hasValue = value != null;
+        const isDefaultValue = !hasValue || value === defaultValue || value.equals?.(defaultValue);
+        const isPersistent = hasValue && PERSISTENT_FLAGS.includes(key);
 
-        if (!isDefaultValue) {
+        if (!isDefaultValue || isPersistent) {
             newData[key] = value;
 
             // Cancel the ForcedDeletion entries for this path — the value is being set, not erased.
+            // The leaf's own entry was already overwritten by the value, so stop at its parent.
             if (deletionKeys || inplace) {
                 const pathParts = key.split(".");
-                for (let i = 1; i < pathParts.length; i++) {
+                for (let i = 1; i < pathParts.length - 1; i++) {
                     delete newData[pathParts.slice(0, i + 1).join(".")];
                 }
             }
@@ -169,7 +179,7 @@ export function cleanData(data, { inplace = false, deletionKeys = false, keepOth
     // e.g. if "fillStyle" is ForcedDeletion there is no need to also carry "fillStyle.texture.width".
     if (deletionKeys || inplace) {
         for (const key in newData) {
-            if (newData[key] !== foundry.data.operators.ForcedDeletion) continue;
+            if (!(newData[key] instanceof foundry.data.operators.ForcedDeletion)) continue;
             if (!key.startsWith(`flags.${MODULE_ID}`)) continue;
             const childPrefix = `${key}.`;
             for (const otherKey in newData) {
@@ -188,11 +198,11 @@ export function cleanData(data, { inplace = false, deletionKeys = false, keepOth
         return newData;
     }
 
-    foundry.utils.mergeObject(data, newData, { applyOperators: true });
-
-    if (deletionKeys) {
-        foundry.utils.mergeObject(data, newData);
-    }
+    // Merge the cleaned flags into the data.
+    // Without applyOperators, a ForcedDeletion replaces the value it targets, so the deletion is kept for Foundry.
+    // `mergeObject` only drops one for a key the data doesn't have, and there is nothing to delete then.
+    // The previous version first merged with applyOperators, which removed those keys and so lost the deletions.
+    foundry.utils.mergeObject(data, newData, { applyOperators: !deletionKeys });
 
     if (!keepOthers) {
         foundry.utils.filterObject(data, foundry.utils.expandObject(DEFAULT_FLAGS));

@@ -1,5 +1,7 @@
 import { canvasToLocal, shapeUpdateFrom, applyHandlePoint, PointHandle, EdgeHandle,
          _PIXI_FLUENT_FILL, _PIXI_LEGACY_FILL } from "../edit-mode.js";
+import { getFillMatrix, getFillStyleMatrix, isLegacyFillStyle, migrateFillStyle } from "../fill-style.js";
+import { cleanData } from "../utils.js";
 
 Hooks.once("quenchReady", (quench) => {
 
@@ -322,5 +324,133 @@ Hooks.once("quenchReady", (quench) => {
             });
         });
     }, { displayName: "ADT | Handle lifecycle" });
+
+    // -------------------------------------------------------------------------
+    // Batch 4: Pattern fill texture matrix
+    //
+    // getFillMatrix maps texture pixels to shape-local pixels (Pixi v8 global
+    // texture space). These tests apply the inverse to local points to check
+    // which texture pixel ends up there.
+    // -------------------------------------------------------------------------
+    quench.registerBatch("advanced-drawing-tools.fill-matrix", (context) => {
+        const { describe, it, assert } = context;
+        const texture = { width: 100, height: 200 };
+        const shape = { width: 400, height: 400 };
+
+        function texelAt(fs, x, y) {
+            const p = getFillMatrix(fs, texture, shape).applyInverse(new PIXI.Point(x, y));
+            return [Math.round(p.x * 1000) / 1000, Math.round(p.y * 1000) / 1000];
+        }
+
+        describe("getFillMatrix", () => {
+            it("empty flags produce identity", () => {
+                assert.deepEqual(texelAt({}, 100, 200), [100, 200]);
+            });
+            it("texture width in px keeps aspect ratio when height is unset", () => {
+                assert.deepEqual(texelAt({ texture: { width: 50 } }, 50, 100), [100, 200]);
+            });
+            it("texture size in % resolves against the shape size", () => {
+                assert.deepEqual(texelAt({ texture: { width: "50%", height: "50%" } }, 200, 200), [100, 200]);
+            });
+            it("position offsets the texture origin", () => {
+                assert.deepEqual(texelAt({ transform: { position: { x: 10, y: 20 } } }, 10, 20), [0, 0]);
+            });
+            it("position in % resolves against the tile size", () => {
+                assert.deepEqual(texelAt({ transform: { position: { x: "50%", y: "50%" } } }, 50, 100), [0, 0]);
+            });
+            it("scale multiplies the tile size", () => {
+                assert.deepEqual(texelAt({ transform: { scale: { x: 2, y: 2 } } }, 200, 400), [100, 200]);
+            });
+            it("rotation turns around the pivot", () => {
+                const fs = { transform: { rotation: 90, pivot: { x: 50, y: 100 }, position: { x: 50, y: 100 } } };
+                assert.deepEqual(texelAt(fs, 50, 100), [50, 100]);
+                assert.deepEqual(texelAt(fs, 0, 100), [50, 150]);
+            });
+        });
+
+        describe("legacy (v13) fill style migration", () => {
+            const legacyCases = {
+                "size + uniform scale": { texture: { width: 625, height: 625 }, transform: { scale: { x: 1.56, y: 1.56 } } },
+                "percent size + position + pivot": { texture: { width: "40%" }, transform: { position: { x: "10%", y: 30 }, pivot: { x: 5, y: "50%" } } },
+                "rotation + non-uniform scale": { transform: { rotation: 30, scale: { x: 2, y: 0.5 }, position: { x: 12, y: -7 } } },
+                "mirrored + skew": { texture: { height: 80 }, transform: { scale: { x: 1, y: -1.5 }, rotation: -120, skew: { x: 15, y: -40 } } },
+            };
+
+            function assertMatrixClose(actual, expected) {
+                for (const key of ["a", "b", "c", "d", "tx", "ty"]) {
+                    assert.closeTo(actual[key], expected[key], 1e-3, key);
+                }
+            }
+
+            it("flags without a version are legacy, version 2 flags are not", () => {
+                assert.isTrue(isLegacyFillStyle({ transform: { rotation: 10 } }));
+                assert.isFalse(isLegacyFillStyle({ version: 2, transform: { rotation: 10 } }));
+                assert.isFalse(isLegacyFillStyle({ transform: { rotation: 0, scale: { x: 1 } } }));
+                assert.isFalse(isLegacyFillStyle(undefined));
+            });
+            it("625px texture at scale 1.56 migrates to a ~400px texture size", () => {
+                const fs = migrateFillStyle(legacyCases["size + uniform scale"], { width: 625, height: 625 }, shape);
+                assert.closeTo(fs.texture.width, 400.641, 1e-3);
+                assert.closeTo(fs.texture.height, 400.641, 1e-3);
+                assert.deepEqual(fs.transform.scale, { x: 1, y: 1 });
+                assert.equal(fs.transform.rotation, 0);
+                assert.equal(fs.version, 2);
+            });
+            for (const [name, legacy] of Object.entries(legacyCases)) {
+                it(`migrated flags render the same as legacy flags: ${name}`, () => {
+                    const migrated = migrateFillStyle(legacy, texture, shape);
+                    assert.isFalse(isLegacyFillStyle(migrated));
+                    assertMatrixClose(getFillStyleMatrix(migrated, texture, shape), getFillStyleMatrix(legacy, texture, shape));
+                });
+            }
+            it("percent texture size stays a percentage", () => {
+                const migrated = migrateFillStyle(legacyCases["percent size + position + pivot"], texture, shape);
+                assert.match(migrated.texture.width, /%$/);
+                assert.match(migrated.texture.height, /%$/);
+            });
+        });
+
+        describe("cleanData fill style version", () => {
+            const versionKey = "flags.advanced-drawing-tools.fillStyle.version";
+            const rotate = () => ({ flags: { "advanced-drawing-tools": { fillStyle: { transform: { rotation: 30 } } } } });
+            const create = data => cleanData(data, { deletionKeys: true });
+            const update = data => cleanData(data, { inplace: true, deletionKeys: true, partial: true });
+
+            it("new drawings get the current version", () => {
+                assert.equal(foundry.utils.getProperty(create(rotate()), versionKey), 2);
+                assert.equal(foundry.utils.getProperty(create({ x: 100 }), versionKey), 2);
+            });
+            it("new drawings keep an explicit legacy version", () => {
+                const data = rotate();
+                foundry.utils.setProperty(data, versionKey, 1);
+                assert.equal(foundry.utils.getProperty(create(data), versionKey), 1);
+            });
+            it("keeps normalized non-default values", () => {
+                const data = rotate();
+                foundry.utils.setProperty(data, "flags.advanced-drawing-tools.fillStyle.transform.position.x", "50px");
+                const created = create(data);
+                assert.equal(foundry.utils.getProperty(created, "flags.advanced-drawing-tools.fillStyle.transform.rotation"), 30);
+                assert.equal(foundry.utils.getProperty(created, "flags.advanced-drawing-tools.fillStyle.transform.position.x"), 50);
+                assert.equal(foundry.utils.getProperty(update(data), "flags.advanced-drawing-tools.fillStyle.transform.position.x"), 50);
+            });
+            it("updates of existing drawings don't add the version", () => {
+                assert.isUndefined(foundry.utils.getProperty(update(rotate()), versionKey));
+            });
+            it("updates keep the version although it equals the default", () => {
+                const data = rotate();
+                foundry.utils.setProperty(data, versionKey, 2);
+                assert.equal(foundry.utils.getProperty(update(data), versionKey), 2);
+            });
+            it("updates delete values reset to their default", () => {
+                const scaleKey = "flags.advanced-drawing-tools.fillStyle.transform.scale.x";
+                const data = rotate();
+                foundry.utils.setProperty(data, scaleKey, 1);
+                const value = foundry.utils.getProperty(update(data), scaleKey);
+                assert.instanceOf(value, foundry.data.operators.ForcedDeletion);
+                // The deletion must survive serialization, or the server keeps the old value
+                assert.notStrictEqual(JSON.stringify({ value }), "{}");
+            });
+        });
+    }, { displayName: "ADT | Fill matrix" });
 
 });

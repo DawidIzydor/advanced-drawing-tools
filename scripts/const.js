@@ -11,6 +11,9 @@ export const DEFAULT_FLAGS = Object.freeze({
     [`flags.${MODULE_ID}.fillStyle.transform.rotation`]: 0,
     [`flags.${MODULE_ID}.fillStyle.transform.scale.x`]: 1,
     [`flags.${MODULE_ID}.fillStyle.transform.scale.y`]: 1,
+    [`flags.${MODULE_ID}.fillStyle.transform.skew.x`]: 0,
+    [`flags.${MODULE_ID}.fillStyle.transform.skew.y`]: 0,
+    [`flags.${MODULE_ID}.fillStyle.version`]: 2,
     [`flags.${MODULE_ID}.lineStyle.dash`]: null,
     [`flags.${MODULE_ID}.textStyle.align`]: null,
     [`flags.${MODULE_ID}.textStyle.dropShadow`]: true,
@@ -34,3 +37,8 @@ export const DEFAULT_FLAGS = Object.freeze({
     [`flags.${MODULE_ID}.textStyle.strokeOpacity`]: null,
     [`flags.${MODULE_ID}.textStyle.wordWrapWidth`]: "100%"
 });
+// Flags that are stored even when they have their default value, and are added with their
+// default value to new documents only, so that existing documents without them can be told apart.
+export const PERSISTENT_FLAGS = Object.freeze([
+    `flags.${MODULE_ID}.fillStyle.version`
+]);

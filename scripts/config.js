@@ -1,4 +1,5 @@
 import { MODULE_ID } from "./const.js";
+import { FILL_STYLE_VERSION, isLegacyFillStyle, migrateFillStyle } from "./fill-style.js";
 import { saveValue, stringifyValue } from "./utils.js";
 
 Hooks.once("libWrapper.Ready", () => {
@@ -209,8 +210,24 @@ Hooks.on("renderDrawingConfig", (app, root, data) => {
     
     const document = app.document;
     const ls = document.getFlag(MODULE_ID, "lineStyle") ?? {};
-    const fs = document.getFlag(MODULE_ID, "fillStyle") ?? {};
+    let fs = document.getFlag(MODULE_ID, "fillStyle") ?? {};
     const ts = document.getFlag(MODULE_ID, "textStyle") ?? {};
+
+    // Show legacy (v13) fill flags converted to the current semantics, so saving the form
+    // stores the migrated values. Without a loaded texture they cannot be converted, and
+    // the version marker is omitted so the flags stay legacy.
+    let fsVersion = FILL_STYLE_VERSION;
+
+    if (isLegacyFillStyle(fs)) {
+        const texture = document.object?.texture;
+        const migrated = texture?.width ? migrateFillStyle(fs, texture, document.shape) : null;
+
+        if (migrated) {
+            fs = migrated;
+        } else {
+            fsVersion = null;
+        }
+    }
 
     // Add scrolling styles for the drawing config form
     const styleId = `${MODULE_ID}-scrolling-styles`;
@@ -367,49 +384,58 @@ Hooks.on("renderDrawingConfig", (app, root, data) => {
     //     </div>
     // `);
 
-    // Fill pattern/texture transform UI hidden — broken in v14/PixiJS v8 (see GitHub issue #9)
-    // $.find(`div[data-tab="fill"]`).append(`
-    //     <div class="form-group">
-    //         <label>Texture Size <span class="units">(Pixels or %)</span></label>
-    //         <div class="form-fields">
-    //             <label>X</label>
-    //             <input type="text" name="flags.${MODULE_ID}.fillStyle.texture.width" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="Width" value="${stringifyValue(fs.texture?.width) ?? ""}">
-    //             <label>Y</label>
-    //             <input type="text" name="flags.${MODULE_ID}.fillStyle.texture.height" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="Height" value="${stringifyValue(fs.texture?.height) ?? ""}">
-    //         </div>
-    //     </div>
-    //     <div class="form-group">
-    //         <label>Texture Position <span class="units">(Pixels or %)</span></label>
-    //         <div class="form-fields">
-    //             <label>X</label>
-    //             <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.position.x" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="0px" value="${stringifyValue(fs.transform?.position?.x) ?? "0px"}">
-    //             <label>Y</label>
-    //             <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.position.y" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="0px" value="${stringifyValue(fs.transform?.position?.y) ?? "0px"}">
-    //         </div>
-    //     </div>
-    //     <div class="form-group">
-    //         <label>Texture Pivot <span class="units">(Pixels or %)</span></label>
-    //         <div class="form-fields">
-    //             <label>X</label>
-    //             <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.pivot.x" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="0px" value="${stringifyValue(fs.transform?.pivot?.x) ?? "0px"}">
-    //             <label>Y</label>
-    //             <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.pivot.y" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="0px" value="${stringifyValue(fs.transform?.pivot?.y) ?? "0px"}">
-    //         </div>
-    //     </div>
-    //     <div class="form-group">
-    //         <label>Texture Scale</label>
-    //         <div class="form-fields">
-    //             <label>X</label>
-    //             <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.scale.x" data-dtype="Number" placeholder="1" value="${fs.transform?.scale?.x ?? "1"}">
-    //             <label>Y</label>
-    //             <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.scale.y" data-dtype="Number" placeholder="1" value="${fs.transform?.scale?.y ?? "1"}">
-    //         </div>
-    //     </div>
-    //     <div class="form-group">
-    //         <label>Texture Rotation <span class="units">(Degrees)</span></label>
-    //         <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.rotation" data-dtype="Number" placeholder="0" value="${fs.transform?.rotation ?? "0"}">
-    //     </div>
-    // `);
+    $.find(`div[data-tab="fill"]`).append(`
+        <div class="form-group">
+            <label>Texture Size <span class="units">(Pixels or %)</span></label>
+            <div class="form-fields">
+                <label>X</label>
+                <input type="text" name="flags.${MODULE_ID}.fillStyle.texture.width" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="Width" value="${stringifyValue(fs.texture?.width) ?? ""}">
+                <label>Y</label>
+                <input type="text" name="flags.${MODULE_ID}.fillStyle.texture.height" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="Height" value="${stringifyValue(fs.texture?.height) ?? ""}">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Texture Position <span class="units">(Pixels or %)</span></label>
+            <div class="form-fields">
+                <label>X</label>
+                <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.position.x" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="0px" value="${stringifyValue(fs.transform?.position?.x) ?? "0px"}">
+                <label>Y</label>
+                <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.position.y" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="0px" value="${stringifyValue(fs.transform?.position?.y) ?? "0px"}">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Texture Pivot <span class="units">(Pixels or %)</span></label>
+            <div class="form-fields">
+                <label>X</label>
+                <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.pivot.x" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="0px" value="${stringifyValue(fs.transform?.pivot?.x) ?? "0px"}">
+                <label>Y</label>
+                <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.pivot.y" title="Pixels (px) or Percent (%)" pattern="\\s*(\\d*\\.?\\d+)\\s*(px|%)?\\s*" placeholder="0px" value="${stringifyValue(fs.transform?.pivot?.y) ?? "0px"}">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Texture Scale</label>
+            <div class="form-fields">
+                <label>X</label>
+                <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.scale.x" data-dtype="Number" placeholder="1" value="${fs.transform?.scale?.x ?? "1"}">
+                <label>Y</label>
+                <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.scale.y" data-dtype="Number" placeholder="1" value="${fs.transform?.scale?.y ?? "1"}">
+            </div>
+        </div>
+        <div class="form-group">
+            <label>Texture Rotation <span class="units">(Degrees)</span></label>
+            <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.rotation" data-dtype="Number" placeholder="0" value="${fs.transform?.rotation ?? "0"}">
+        </div>
+        <div class="form-group">
+            <label>Texture Skew <span class="units">(Degrees)</span></label>
+            <div class="form-fields">
+                <label>X</label>
+                <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.skew.x" data-dtype="Number" placeholder="0" value="${fs.transform?.skew?.x ?? "0"}">
+                <label>Y</label>
+                <input type="text" name="flags.${MODULE_ID}.fillStyle.transform.skew.y" data-dtype="Number" placeholder="0" value="${fs.transform?.skew?.y ?? "0"}">
+            </div>
+        </div>
+        ${fsVersion ? `<input type="hidden" name="flags.${MODULE_ID}.fillStyle.version" data-dtype="Number" value="${fsVersion}">` : ""}
+    `);
 
     $.find(`select[name="fontFamily"]`).closest(".form-group").after(`
         <div class="form-group">

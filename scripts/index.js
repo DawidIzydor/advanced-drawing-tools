@@ -52,9 +52,8 @@ Hooks.once("init", () => {
             return;
         }
 
-        // Refresh when module flags change
-        if (changes.flags && (changes.flags[MODULE_ID] !== undefined
-            || changes.flags[`-=${MODULE_ID}`] !== undefined)) {
+        // Refresh when module flags change (v14 no longer uses `-=`, so we don't need to check it separately)
+        if (changes.flags?.[MODULE_ID] !== undefined) {
             document.object.refresh();
         }
         
