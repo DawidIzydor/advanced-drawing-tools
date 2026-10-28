@@ -230,7 +230,7 @@ Reads `flags.advanced-drawing-tools.textStyle` and applies all properties direct
 
 Repositions `text.anchor` and `text.position` for left/centre/right alignment.
 
-**Arc text** — when `ts.arc !== 0`, creates a `WarpedText` child and hides the original `drawing.text` (`renderable = false`). Cleans up on arc = 0.
+**Arc text** — when `ts.arc !== 0`, creates a `WarpedText` and hides the original `drawing.text` (`renderable = false`). The `WarpedText` is added to the text's parent, `drawing.shape` (in the primary or interface canvas group), right after the text, so it inherits the drawing's position, rotation and hidden alpha; the `Drawing` placeable itself is not positioned at the drawing. Because a redraw replaces the text but keeps the shape, a `WarpedText` whose `text` is no longer `drawing.text` is destroyed and recreated. Cleans up on arc = 0.
 
 ---
 
@@ -253,7 +253,7 @@ PIXI mesh that renders a `PIXI.Text` object warped along a circular arc.
 
 ### `WarpedText extends PIXI.Mesh`
 
-Wraps a `text: PIXI.Text` object. Shares the text's texture (via `BaseTexture`/`source`, handling the Pixi v7→v8 rename). Uses `WarpedTextGeometry` as the mesh geometry and `MeshSimpleMaterial` / `MeshMaterial` (v7→v8 rename).
+Wraps a `text: PIXI.Text` object. Shares the text's texture through a new `PIXI.Texture` on the text's `BaseTexture`. Uses `WarpedTextGeometry` as the mesh geometry and a `PIXI.MeshMaterial`.
 
 Key members:
 

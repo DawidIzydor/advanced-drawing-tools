@@ -1,22 +1,16 @@
+// Pixi v7 only. Pixi v8 needs a port: Mesh takes { geometry, texture } and has no material classes,
+// PlaneGeometry uses verticesX/verticesY and getBuffer("aPosition"),
+// _render is no longer called, and Text has no updateText.
 export class WarpedText extends PIXI.Mesh {
     constructor(text) {
         const geometry = new WarpedTextGeometry(0, 0, 2, 2);
-
-        // Pixi v8: BaseTexture renamed to source; MeshMaterial renamed to MeshSimpleMaterial
-        const textureSource = text.texture.source ?? text.texture.baseTexture;
-        const sharedTexture = textureSource
-            ? new PIXI.Texture({ source: textureSource })
-            : text.texture;
-        const MaterialClass = PIXI.MeshSimpleMaterial ?? PIXI.MeshMaterial;
-        const material = new MaterialClass(sharedTexture);
+        const material = new PIXI.MeshMaterial(new PIXI.Texture(text.texture.baseTexture));
 
         super(geometry, material);
 
         this.text = text;
 
-        const isValid = (text.texture.source ?? text.texture.baseTexture)?.valid
-            ?? text.texture.valid;
-        if (isValid) {
+        if (this.texture.baseTexture.valid) {
             this.textureUpdated();
         }
 
@@ -76,16 +70,20 @@ export class WarpedText extends PIXI.Mesh {
         super.updateTransform();
     }
 
-    getBounds(skipUpdate) {
+    getBounds(skipUpdate, rect) {
         this.text.updateText(true);
 
-        return super.getBounds(skipUpdate);
+        if (this.text._textureID === -1) {
+            skipUpdate = false;
+        }
+
+        return super.getBounds(skipUpdate, rect);
     }
 
-    getLocalBounds() {
+    getLocalBounds(rect) {
         this.text.updateText(true);
 
-        return super.getLocalBounds();
+        return super.getLocalBounds(rect);
     }
 
     destroy(options) {

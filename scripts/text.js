@@ -59,18 +59,26 @@ Hooks.on("refreshDrawing", drawing => {
     const arc = Math.clamp(ts?.arc ? ts.arc / 180 * Math.PI : 0, -2 * Math.PI, +2 * Math.PI);
 
     if (arc !== 0) {
-        if (drawing._warpedText?.destroyed) {
+        // A redraw replaces the text but keeps the shape, so a warped text of the old text is discarded
+        if (drawing._warpedText && (drawing._warpedText.destroyed || drawing._warpedText.text !== text)) {
+            if (!drawing._warpedText.destroyed) {
+                drawing._warpedText.destroy();
+            }
+
             drawing._warpedText = null;
         }
 
+        // The text is a child of the drawing's shape, which carries the drawing's position,
+        // rotation and hidden alpha, so the warped text is placed right beside it.
+        const parent = drawing.text.parent;
+
         if (!drawing._warpedText) {
-            drawing._warpedText = drawing.addChildAt(new WarpedText(drawing.text), drawing.text.parent.getChildIndex(drawing.text) + 1);
+            drawing._warpedText = parent.addChildAt(new WarpedText(drawing.text), parent.getChildIndex(drawing.text) + 1);
         }
 
-        drawing._warpedText.alpha = document.hidden ? Math.min(0.5, document.textAlpha ?? 1) : (document.textAlpha ?? 1);
+        drawing._warpedText.alpha = document.textAlpha ?? 1;
         drawing._warpedText.pivot.set(drawing.text.width / 2, drawing.text.height / 2);
         drawing._warpedText.position.set(document.shape.width / 2, document.shape.height / 2);
-        drawing._warpedText.angle = document.rotation;
         drawing._warpedText.arc = arc;
 
         drawing.text.renderable = false;
